@@ -1,0 +1,40 @@
+# Codex local metadata
+.agents/
+.codex/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Runtime data and browser profiles
+runtime/
+**/runtime/
+**/profiles/
+**/results/
+playwright-report/
+test-results/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credential*
+*secret*
+*storage-state*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp

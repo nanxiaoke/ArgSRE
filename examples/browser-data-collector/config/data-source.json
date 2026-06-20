@@ -1,0 +1,45 @@
+{
+  "id": "mock-ops-data-source",
+  "name": "模拟运营数据源",
+  "entryPath": "/scenario",
+  "targetUrlPattern": "/app",
+  "auth": {
+    "pageUrlPattern": "/auth",
+    "stateAttribute": "data-auth-state",
+    "quickButton": "[data-testid='quick-auth']",
+    "fingerprintButton": "[data-testid='fingerprint-auth']",
+    "timeoutMs": 60000
+  },
+  "flow": [
+    {
+      "type": "click",
+      "name": "进入运营数据子页面",
+      "selector": "[data-testid='nav-operations']"
+    },
+    {
+      "type": "select",
+      "name": "选择区域",
+      "selector": "[data-testid='region-select']",
+      "value": "cn-north-4"
+    },
+    {
+      "type": "clickAndWaitForResponse",
+      "name": "查询运营数据",
+      "selector": "[data-testid='query-button']",
+      "responseUrlPattern": "/api/ops/query"
+    }
+  ],
+  "extract": {
+    "recordPath": ["data", "records"],
+    "fields": {
+      "serviceId": "service.id",
+      "serviceName": "service.name",
+      "region": "deployment.region",
+      "status": "runtime.status",
+      "instanceCount": "runtime.instanceCount",
+      "alarmCount": "runtime.alarmCount",
+      "updatedAt": "runtime.updatedAt"
+    },
+    "primaryKey": "serviceId"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "argsre-browser-data-collector-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "node src/mock-server.js",
+    "collect:valid": "node src/collector.js --mode valid",
+    "collect:quick": "node src/collector.js --mode quick",
+    "collect:fingerprint": "node src/collector.js --mode fingerprint",
+    "test": "node src/run-demo.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.57.0"
+  }
+}
