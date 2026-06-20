@@ -220,6 +220,9 @@ export function startMockServer({ port = DEFAULT_PORT } = {}) {
       json(res, 200, {
         code: 0,
         message: "success",
+        debug: {
+          sessionToken: "mock-sensitive-token",
+        },
         request: {
           region: body.region,
           timeRange: body.timeRange,

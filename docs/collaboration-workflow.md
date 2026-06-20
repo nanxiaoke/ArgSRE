@@ -125,6 +125,8 @@ npm ci
 npm test
 ```
 
+真实页面探测步骤见 `docs/internal-real-page-probe-guide.md`。
+
 接入真实页面时，建议复制配置模板到 Git 忽略目录，例如：
 
 ```text

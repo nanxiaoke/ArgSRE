@@ -1,0 +1,14 @@
+{
+  "name": "internal-data-source-probe",
+  "entryUrl": "https://replace-with-internal-target.example/",
+  "profileName": "probe",
+  "durationSeconds": 0,
+  "capture": {
+    "includeUrlPatterns": [],
+    "excludeUrlPatterns": [
+      "google-analytics",
+      "googletagmanager"
+    ],
+    "maxResponseBytes": 1048576
+  }
+}

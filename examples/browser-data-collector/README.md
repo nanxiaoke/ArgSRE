@@ -16,6 +16,8 @@
 - `config/data-source.json`：操作条件、关键请求和解析规则。
 - `src/mock-server.js`：模拟内部认证中心和运营页面。
 - `src/collector.js`：Playwright 采集器。
+- `src/probe.js`：真实页面探测器。
+- `src/inspect-probe.js`：查看请求候选和响应字段路径。
 - `src/run-demo.js`：三种认证场景的端到端验证。
 - `runtime/`：运行时 profile、采集结果和审计文件。
 
@@ -54,6 +56,76 @@ node src/collector.js --mode fingerprint --headless false
 ```
 
 采集器会打开 Edge，并输出一条模拟 IM 提醒。点击页面中的“指纹认证”按钮后，任务会继续进入目标页面并完成数据采集。
+
+## 真实页面探测
+
+探测配置必须保存在 Git 忽略的 `runtime/` 目录，不要把内部 URL 写入仓库配置。
+
+先创建本地配置：
+
+```bash
+mkdir -p runtime/local-config
+cp config/probe-config.example.json runtime/local-config/probe.json
+```
+
+编辑 `runtime/local-config/probe.json`，至少填写真实 `entryUrl`。
+
+启动探测：
+
+```bash
+npm run probe -- --config runtime/local-config/probe.json
+```
+
+工具会打开有头 Edge。随后：
+
+1. 人工完成快速认证或指纹认证。
+2. 进入目标子页面。
+3. 设置下拉框、日期、筛选条件。
+4. 点击查询或刷新。
+5. 回到终端按 Enter 停止探测。
+
+探测器会记录：
+
+- 点击、选择和提交操作。
+- XHR、Fetch 和 JSON 请求候选。
+- 请求方法、脱敏 URL、请求体形状和响应状态。
+- 脱敏后的 JSON 响应样例。
+
+所有结果仅写入：
+
+```text
+runtime/probes/<session-id>/
+```
+
+该目录已被 Git 忽略。
+
+### 查看候选请求
+
+查看最近一次探测的候选列表：
+
+```bash
+npm run inspect
+```
+
+查看指定候选的响应字段路径：
+
+```bash
+npm run inspect -- --candidate candidate-001
+```
+
+如果候选过多，可以在本地配置中增加：
+
+```json
+{
+  "capture": {
+    "includeUrlPatterns": ["/api/"],
+    "excludeUrlPatterns": ["analytics", "report"],
+    "maxResponseBytes": 1048576
+  }
+}
+```
+
+不要将 `runtime/probes/` 中的完整文件反馈到外部。反馈时只提供候选数量、抽象请求路径、字段结构和错误分类。
 
 ## 采集结果
 
