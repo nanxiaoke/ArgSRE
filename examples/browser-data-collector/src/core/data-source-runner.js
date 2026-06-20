@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { withRetry } from "./retry.js";
 
 const DEFAULT_EDGE_PATH =
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
@@ -76,7 +77,7 @@ async function establishSession(page, config, audit, options) {
   throw new Error(`Unsupported authentication state: ${state}`);
 }
 
-async function fetchPayload(context, requestConfig) {
+async function fetchPayload(context, requestConfig, retryConfig = {}) {
   const method = requestConfig.method?.toUpperCase() ?? "GET";
   const options = {
     headers: requestConfig.headers,
@@ -85,15 +86,37 @@ async function fetchPayload(context, requestConfig) {
   };
   if (requestConfig.body !== undefined) options.data = requestConfig.body;
 
-  const response = await context.request.fetch(requestConfig.url, options);
-  const text = await response.text();
-  if (!response.ok()) {
-    throw new Error(`Data request failed: ${response.status()} ${text}`);
-  }
-  return {
-    status: response.status(),
-    payload: JSON.parse(text),
-  };
+  return withRetry(
+    async () => {
+      const response = await context.request.fetch(requestConfig.url, {
+        ...options,
+        timeout: retryConfig.timeoutMs ?? 30000,
+      });
+      const text = await response.text();
+      if (!response.ok()) {
+        const error = new Error(
+          `Data request failed: ${response.status()} ${text}`,
+        );
+        error.status = response.status();
+        throw error;
+      }
+      return {
+        status: response.status(),
+        payload: JSON.parse(text),
+      };
+    },
+    {
+      maxAttempts: retryConfig.maxAttempts ?? 1,
+      baseDelayMs: retryConfig.baseDelayMs ?? 250,
+      maxDelayMs: retryConfig.maxDelayMs ?? 5000,
+      shouldRetry(error) {
+        return !error.status || error.status === 429 || error.status >= 500;
+      },
+      onAttempt({ attempt }) {
+        retryConfig.onAttempt?.(attempt);
+      },
+    },
+  );
 }
 
 export async function runDataSource({
@@ -102,6 +125,7 @@ export async function runDataSource({
   simulateFingerprint = false,
   onAuthRequired,
   edgePath = process.env.EDGE_PATH ?? DEFAULT_EDGE_PATH,
+  retryConfig,
 } = {}) {
   if (!config) throw new Error("data source config is required");
   if (!runtimeRoot) throw new Error("runtimeRoot is required");
@@ -131,7 +155,14 @@ export async function runDataSource({
       simulateFingerprint,
       onAuthRequired,
     });
-    const response = await fetchPayload(context, config.request);
+    let attempts = 0;
+    const response = await fetchPayload(context, config.request, {
+      ...retryConfig,
+      onAttempt(attempt) {
+        attempts = attempt;
+      },
+    });
+    audit.request.attempts = attempts;
     const records = extractRecords(response.payload, config.extract);
     audit.status = "success";
     audit.request.status = response.status;

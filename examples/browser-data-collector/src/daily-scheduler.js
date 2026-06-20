@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDailyReport } from "./daily-report.js";
+import { assertValidWorkflowConfig } from "./core/config-validator.js";
 
 function getArgument(name, fallback) {
   const prefix = `--${name}=`;
@@ -31,6 +32,7 @@ export function millisecondsUntil(time, now = new Date()) {
 }
 
 export async function startDailyScheduler({ config, runOnStart = false }) {
+  assertValidWorkflowConfig(config);
   let stopped = false;
   let timer;
 

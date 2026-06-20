@@ -165,8 +165,14 @@ function appPage() {
   );
 }
 
-export function startMockServer({ port = DEFAULT_PORT } = {}) {
+export function startMockServer({
+  port = DEFAULT_PORT,
+  dataFailures = 0,
+  imFailures = 0,
+} = {}) {
   const imReports = [];
+  let remainingDataFailures = dataFailures;
+  let remainingImFailures = imFailures;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const cookies = parseCookies(req.headers.cookie);
@@ -215,6 +221,11 @@ export function startMockServer({ port = DEFAULT_PORT } = {}) {
         json(res, 401, { error: "authentication_required" });
         return;
       }
+      if (remainingDataFailures > 0) {
+        remainingDataFailures -= 1;
+        json(res, 503, { error: "temporary_data_failure" });
+        return;
+      }
 
       const body = await readJson(req);
       const now = new Date().toISOString();
@@ -257,8 +268,18 @@ export function startMockServer({ port = DEFAULT_PORT } = {}) {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/ops/fail") {
+      json(res, 503, { error: "permanent_data_failure" });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/im/reports") {
       const body = await readJson(req);
+      if (remainingImFailures > 0) {
+        remainingImFailures -= 1;
+        json(res, 503, { error: "temporary_im_failure" });
+        return;
+      }
       imReports.push(body);
       json(res, 200, {
         messageId: `mock-message-${imReports.length}`,

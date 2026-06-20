@@ -128,6 +128,39 @@ src/daily-scheduler.js
 
 生产环境更推荐由操作系统任务计划每天调用一次 `daily-report.js`。这样即使 Node 进程退出或机器重启，也由系统调度器负责恢复。
 
+### 2.6 配置校验层
+
+位置：
+
+```text
+src/core/config-validator.js
+```
+
+职责：
+
+- 在启动浏览器前检查必填字段。
+- 检查绝对 URL、HTTP 方法、字段路径、主键和调度时间。
+- 检查重试、幂等和失败通知参数。
+- 输出稳定错误码和字段路径。
+
+### 2.7 可靠性状态
+
+位置：
+
+```text
+src/core/retry.js
+src/core/idempotency.js
+src/core/workflow-state.js
+```
+
+职责：
+
+- 对网络错误、429 和 5xx 做有限重试。
+- 防止同一日报重复发送。
+- 记录连续失败次数。
+- 达到阈值后发送失败通知。
+- 指纹等待记录为 `blocked`，不计入连续技术失败。
+
 ## 3. 配置分区
 
 配置文件分为四个独立部分：
@@ -158,6 +191,15 @@ src/daily-scheduler.js
 
 定义每日触发时间。
 
+### reliability
+
+定义：
+
+- 数据请求重试次数和超时。
+- 消息发送重试次数和超时。
+- 幂等有效时间。
+- 连续失败通知阈值。
+
 ## 4. 运行产物
 
 每次运行写入：
@@ -180,6 +222,19 @@ runtime/daily-reports/<run-id>/
 - `data-source-audit.json`
 - `workflow-audit.json`
 
+其他状态：
+
+```text
+runtime/idempotency/
+runtime/state/
+```
+
+Dry-run 会额外生成：
+
+```text
+message-preview.json
+```
+
 所有产物只保存在内网本地，不进入 Git。
 
 ## 5. 当前限制
@@ -190,7 +245,8 @@ runtime/daily-reports/<run-id>/
 - 不同内部 IM 可能需要先上传图片，再发送卡片，需要新增专用适配器。
 - 调度器使用运行机器的本地时区。
 - 需要指纹认证时无法无人值守完成。
-- 暂未实现失败重试、幂等、防重复发送和历史趋势。
+- 暂未实现多实例分布式锁和跨机器幂等。
+- 暂未实现历史趋势数据库。
 
 ## 6. 后续演进
 

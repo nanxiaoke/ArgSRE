@@ -57,6 +57,22 @@
       "Content-Type": "application/json"
     }
   },
+  "reliability": {
+    "dataRequest": {
+      "maxAttempts": 3,
+      "baseDelayMs": 500,
+      "maxDelayMs": 3000,
+      "timeoutMs": 30000
+    },
+    "messageSend": {
+      "maxAttempts": 3,
+      "baseDelayMs": 500,
+      "maxDelayMs": 3000,
+      "timeoutMs": 30000
+    },
+    "idempotencyHours": 36,
+    "failureNotificationThreshold": 1
+  },
   "schedule": {
     "time": "09:00"
   }

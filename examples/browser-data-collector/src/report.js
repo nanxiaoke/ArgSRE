@@ -35,6 +35,27 @@ async function latestProbeSummary() {
   }
 }
 
+async function latestDailyAudit() {
+  const reportsPath = join(ROOT, "runtime", "daily-reports");
+  try {
+    const entries = await readdir(reportsPath, { withFileTypes: true });
+    const latest = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .at(-1);
+    if (!latest) return undefined;
+    return JSON.parse(
+      await readFile(
+        join(reportsPath, latest, "workflow-audit.json"),
+        "utf8",
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 const commit = await command(
   "git",
   ["rev-parse", "HEAD"],
@@ -57,6 +78,7 @@ const npmVersion = await command(
   ["/d", "/s", "/c", "npm --version"],
 );
 const summary = await latestProbeSummary();
+const dailyAudit = await latestDailyAudit();
 
 const candidates =
   summary?.candidates
@@ -106,6 +128,15 @@ ${candidates}
 - 记录数组节点：请填写，例如 $.data.items[]
 - 主键字段：请填写字段名，不填写真实值
 - 计划提取字段：请填写字段名和类型
+
+## 每日报告 MVP
+
+- 最近任务状态：${dailyAudit?.status ?? "无运行记录"}
+- Dry-run：${dailyAudit?.dryRun ?? "未知"}
+- 标准记录数量：${dailyAudit?.recordCount ?? 0}
+- 消息幂等跳过：${dailyAudit?.messageResult?.skipped ?? false}
+- 连续失败次数：${dailyAudit?.workflowState?.consecutiveFailures ?? 0}
+- 错误分类：${dailyAudit?.workflowState?.lastBlockedReason ?? dailyAudit?.workflowState?.lastErrorCode ?? dailyAudit?.error?.name ?? "无"}
 
 ## 失败信息
 

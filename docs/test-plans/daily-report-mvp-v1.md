@@ -29,14 +29,15 @@
 | --- | --- | --- |
 | D00 | 环境和版本确认 | 是 |
 | D01 | 模拟端到端回归 | 是 |
-| D02 | 创建内网私有配置 | 是 |
-| D03 | 单次真实运行 | 是 |
-| D04 | 数据源结果检查 | 是 |
-| D05 | 报告与图表检查 | 是 |
-| D06 | 消息发送检查 | 是 |
-| D07 | 指纹超时检查 | 是 |
-| D08 | 每日调度检查 | 是 |
-| D09 | Git 和安全检查 | 是 |
+| D02 | 创建并校验内网私有配置 | 是 |
+| D03 | Dry-run 安全试跑 | 是 |
+| D04 | 单次真实发送 | 是 |
+| D05 | 数据源结果检查 | 是 |
+| D06 | 报告与图表检查 | 是 |
+| D07 | 消息、重试和幂等检查 | 是 |
+| D08 | 指纹与失败通知检查 | 是 |
+| D09 | 每日调度检查 | 是 |
+| D10 | Git 和安全检查 | 是 |
 
 ## 4. D00 环境和版本确认
 
@@ -91,7 +92,7 @@ Daily report demo passed
 
 失败时不要继续真实接入。
 
-## 6. D02 创建内网私有配置
+## 6. D02 创建并校验内网私有配置
 
 Git Bash：
 
@@ -143,13 +144,13 @@ Copy-Item config\daily-report.example.json runtime\local-config\daily-report.jso
 检查：
 
 ```bash
-node -e "JSON.parse(require('fs').readFileSync('runtime/local-config/daily-report.json','utf8')); console.log('PASS')"
+npm run daily:validate -- --config runtime/local-config/daily-report.json
 git check-ignore -v runtime/local-config/daily-report.json
 ```
 
 预期：
 
-- JSON 检查输出 PASS。
+- 配置检查输出 `PASS`。
 - Git ignore 规则匹配 runtime。
 
 失败分类：
@@ -159,7 +160,34 @@ git check-ignore -v runtime/local-config/daily-report.json
 - `DAILY-CFG-003`：消息通道配置缺失。
 - `DAILY-CFG-004`：私有配置未被忽略。
 
-## 7. D03 单次真实运行
+配置错误会在打开浏览器之前返回 `CFG-*` 错误码。
+
+## 7. D03 Dry-run 安全试跑
+
+首次运行必须使用 Dry-run：
+
+```bash
+npm run daily:once -- \
+  --config runtime/local-config/daily-report.json \
+  --dry-run true
+```
+
+预期：
+
+- 完成认证和纯 HTTP 请求。
+- 生成标准记录、报告和图表。
+- 不调用真实 IM。
+- 生成 `message-preview.json`。
+
+通过后人工检查报告内容是否符合内部发送范围，再继续 D04。
+
+失败分类：
+
+- `DAILY-DRY-001`：仍调用了真实 IM。
+- `DAILY-DRY-002`：未生成消息预览。
+- 其他错误沿用后续数据、报告错误分类。
+
+## 8. D04 单次真实发送
 
 首次建议有头运行：
 
@@ -200,7 +228,7 @@ npm run daily:once -- --config runtime/local-config/daily-report.json
 - 本次任务状态为 `authentication_required`。
 - 人工完成认证后重新运行。
 
-## 8. D04 数据源结果检查
+## 9. D05 数据源结果检查
 
 找到最新目录：
 
@@ -231,7 +259,7 @@ Get-Content (Join-Path $run.FullName 'data-source-audit.json')
 - `DAILY-DATA-003`：记录数量异常。
 - `DAILY-DATA-004`：标准记录包含不应保留的敏感字段。
 
-## 9. D05 报告与图表检查
+## 10. D06 报告与图表检查
 
 检查：
 
@@ -259,7 +287,7 @@ chart.svg
 - `DAILY-CHART-001`：图表无法打开。
 - `DAILY-CHART-002`：标签或数值显示异常。
 
-## 10. D06 消息发送检查
+## 11. D07 消息、重试和幂等检查
 
 确认内部 IM 收到：
 
@@ -285,7 +313,30 @@ chart.svg
 - `DAILY-MSG-003`：文字发送成功但图表失败。
 - `DAILY-MSG-004`：重复发送。
 
-## 11. D07 指纹超时检查
+### 重试验证
+
+如果内部测试接口支持临时返回 503，可验证：
+
+- 数据请求按配置次数重试。
+- 消息请求按配置次数重试。
+- `401/403` 不重复请求。
+
+### 幂等验证
+
+同一天连续执行两次：
+
+```bash
+npm run daily:once -- --config runtime/local-config/daily-report.json
+npm run daily:once -- --config runtime/local-config/daily-report.json
+```
+
+预期：
+
+- 第二次仍采集和生成本地报告。
+- 第二次 `messageResult.skipped=true`。
+- IM 只收到一份业务日报。
+
+## 12. D08 指纹与失败通知检查
 
 该用例只在方便时验证。
 
@@ -297,6 +348,7 @@ chart.svg
 - 不发送业务日报。
 - `workflow-audit.json` 状态为 `authentication_required`。
 - `data-source-audit.json` 记录指纹认证状态。
+- 工作流状态为 `blocked`，连续失败次数不增加。
 
 失败分类：
 
@@ -304,7 +356,16 @@ chart.svg
 - `DAILY-FP-002`：认证未完成却继续请求数据。
 - `DAILY-FP-003`：误发送空业务报告。
 
-## 12. D08 每日调度检查
+### 连续失败
+
+当数据请求持续失败并达到阈值时：
+
+- `runtime/state/` 中连续失败次数增加。
+- IM 收到抽象失败通知。
+- 通知中不包含真实 URL、请求体或响应体。
+- 下一次成功后连续失败次数清零。
+
+## 13. D09 每日调度检查
 
 ### 方式一：内置调度器
 
@@ -328,19 +389,27 @@ Ctrl+C
 
 ### 方式二：Windows 任务计划
 
-推荐生产使用 Windows 任务计划，每天调用：
+先预览：
 
-```text
-node <绝对路径>\src\daily-report.js --config <绝对路径>\runtime\local-config\daily-report.json
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\manage-daily-task.ps1 `
+  -Action Preview `
+  -ConfigPath runtime\local-config\daily-report.json `
+  -Time 09:00
 ```
 
-工作目录设置为：
+安装：
 
-```text
-examples\browser-data-collector
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\manage-daily-task.ps1 `
+  -Action Install `
+  -ConfigPath runtime\local-config\daily-report.json `
+  -Time 09:00
 ```
 
 验收时可临时设置为未来 2-5 分钟执行一次，确认完成后再改为正式时间。
+
+完整说明见 `docs/windows-scheduled-task-guide.md`。
 
 失败分类：
 
@@ -349,7 +418,7 @@ examples\browser-data-collector
 - `DAILY-SCHED-003`：计划任务无浏览器权限。
 - `DAILY-SCHED-004`：机器锁屏或会话状态导致认证失败。
 
-## 13. D09 Git 和安全检查
+## 14. D10 Git 和安全检查
 
 ```bash
 git status --short --ignored
@@ -364,12 +433,12 @@ git check-ignore -v runtime/daily-reports
 - 浏览器 profile 被忽略。
 - 没有内部 URL 或消息凭据进入 Git。
 
-## 14. 脱敏反馈
+## 15. 脱敏反馈
 
 反馈：
 
 - Commit SHA。
-- D00-D09 状态。
+- D00-D10 状态。
 - 首个失败用例。
 - 认证状态。
 - HTTP 状态码。

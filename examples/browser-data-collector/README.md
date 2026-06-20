@@ -188,6 +188,22 @@ cp config/daily-report.example.json runtime/local-config/daily-report.json
 npm run daily:once -- --config runtime/local-config/daily-report.json
 ```
 
+启动前配置校验：
+
+```bash
+npm run daily:validate -- --config runtime/local-config/daily-report.json
+```
+
+首次安全试跑，不发送 IM：
+
+```bash
+npm run daily:once -- \
+  --config runtime/local-config/daily-report.json \
+  --dry-run true
+```
+
+Dry-run 仍会完成认证、HTTP 采集、数据组装和图表生成，并在运行目录写入 `message-preview.json`。
+
 长期调度：
 
 ```bash
@@ -195,6 +211,21 @@ npm run daily:schedule -- \
   --config runtime/local-config/daily-report.json \
   --run-now true
 ```
+
+Windows 生产运行建议使用任务计划：
+
+```text
+docs/windows-scheduled-task-guide.md
+```
+
+可靠性能力：
+
+- 数据请求和消息发送支持有限指数退避重试。
+- `401/403` 不做盲目重试。
+- 同一工作流同一天只发送一次业务日报。
+- 连续失败次数保存在 `runtime/state/`。
+- 达到阈值后发送抽象失败通知。
+- 所有运行状态、幂等记录和预览文件均位于 Git 忽略目录。
 
 设计说明：
 
