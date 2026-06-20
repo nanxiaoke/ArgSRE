@@ -127,6 +127,8 @@ npm test
 
 真实页面探测步骤见 `docs/internal-real-page-probe-guide.md`。
 
+详细验收用例见 `docs/test-plans/browser-probe-v1.md`。后续每个需要内网验证的版本都必须提供同等级别的测试计划。
+
 接入真实页面时，建议复制配置模板到 Git 忽略目录，例如：
 
 ```text
@@ -185,7 +187,22 @@ runtime/local-config/data-source.json
 
 每个问题至少经过一次“模拟环境回归 + 内网确认”后关闭。
 
-## 9. 提交前安全检查
+## 9. 测试交付要求
+
+外部开发每次请求内网验证时，必须提供：
+
+- 精确 commit SHA。
+- 环境自检命令。
+- 完整模拟回归命令。
+- 编号化测试用例。
+- 每步预期结果。
+- 失败分类和停止规则。
+- 安全边界。
+- 脱敏反馈模板。
+
+通用规范见 `docs/internal-test-delivery-standard.md`。
+
+## 10. 提交前安全检查
 
 每次推送前执行：
 

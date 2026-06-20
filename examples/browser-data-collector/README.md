@@ -29,6 +29,20 @@ npm install
 
 样例使用系统已安装的 Microsoft Edge，不需要下载 Playwright 浏览器。
 
+## 环境自检
+
+```bash
+npm run doctor
+```
+
+所有检查均为 `PASS` 且 `failed=0` 后再继续测试。
+
+如果 Edge 不在默认安装路径：
+
+```powershell
+$env:EDGE_PATH = "C:\实际路径\msedge.exe"
+```
+
 ## 自动验证
 
 ```bash
@@ -126,6 +140,26 @@ npm run inspect -- --candidate candidate-001
 ```
 
 不要将 `runtime/probes/` 中的完整文件反馈到外部。反馈时只提供候选数量、抽象请求路径、字段结构和错误分类。
+
+详细测试步骤和预期结果见：
+
+```text
+docs/test-plans/browser-probe-v1.md
+```
+
+### 生成脱敏反馈草稿
+
+```bash
+npm run report
+```
+
+报告生成在：
+
+```text
+runtime/reports/internal-validation-feedback.md
+```
+
+反馈前仍需人工检查和补充测试状态。
 
 ## 采集结果
 
