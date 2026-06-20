@@ -253,6 +253,26 @@ src/catalog.js
 
 详细说明见 `docs/data-source-catalog.md`。
 
+### 2.12 数据质量门禁
+
+位置：
+
+```text
+src/core/data-quality.js
+```
+
+质量检查位于标准记录提取之后、历史快照和报告之前。浏览器采集与人工导入共用相同规则：
+
+- 最少记录数。
+- 必填字段。
+- 唯一字段。
+- 数据新鲜度。
+- 数值范围。
+
+`warn` 模式保留数据并将问题写入报告；`fail` 模式拒绝当前数据源，但不阻塞其他数据源。质量审计不保存触发问题的真实值，只记录规则、字段、影响数量和记录索引。
+
+详细说明见 `docs/data-quality-gates.md`。
+
 ## 3. 配置分区
 
 配置文件分为独立部分：
@@ -317,6 +337,7 @@ runtime/daily-reports/<run-id>/
 - `chart.svg`
 - `trend.json`
 - `trend-chart.svg`
+- `data-quality-audit.json`
 - `workflow-audit.json`
 
 认证阻塞或失败任务：

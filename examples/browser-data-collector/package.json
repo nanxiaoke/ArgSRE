@@ -22,10 +22,11 @@
     "test:catalog": "node src/run-catalog-demo.js",
     "test:collector": "node src/run-demo.js",
     "test:daily": "node src/run-daily-report-demo.js",
+    "test:quality": "node src/run-data-quality-demo.js",
     "test:history": "node src/run-history-demo.js",
     "test:manual": "node src/run-manual-file-demo.js",
     "test:probe": "node src/run-probe-demo.js",
-    "test": "npm run test:config && npm run test:catalog && npm run test:collector && npm run test:probe && npm run test:manual && npm run test:history && npm run test:daily"
+    "test": "npm run test:config && npm run test:catalog && npm run test:quality && npm run test:collector && npm run test:probe && npm run test:manual && npm run test:history && npm run test:daily"
   },
   "dependencies": {
     "playwright-core": "^1.57.0"

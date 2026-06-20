@@ -261,6 +261,12 @@ docs/manual-data-import.md
 docs/data-source-catalog.md
 ```
 
+数据质量规则、门禁和审计：
+
+```text
+docs/data-quality-gates.md
+```
+
 ## 采集结果
 
 结果写入：

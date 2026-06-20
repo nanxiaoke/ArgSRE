@@ -63,6 +63,148 @@ function validateRetry(errors, value, path) {
   }
 }
 
+function validateQuality(errors, quality, source, path) {
+  if (quality === undefined) return;
+  if (!requireObject(errors, quality, path)) return;
+  if (!["warn", "fail"].includes(quality.mode ?? "warn")) {
+    add(errors, "CFG-QUALITY-001", `${path}.mode`, "must be warn or fail");
+  }
+  if (
+    quality.minRecords !== undefined &&
+    (!Number.isInteger(quality.minRecords) || quality.minRecords < 0)
+  ) {
+    add(
+      errors,
+      "CFG-QUALITY-002",
+      `${path}.minRecords`,
+      "must be an integer >= 0",
+    );
+  }
+
+  const outputFields = new Set(Object.keys(source.extract?.fields ?? {}));
+  for (const key of ["requiredFields", "uniqueFields"]) {
+    if (quality[key] === undefined) continue;
+    if (
+      !Array.isArray(quality[key]) ||
+      quality[key].length === 0 ||
+      quality[key].some(
+        (field) => typeof field !== "string" || field.trim() === "",
+      )
+    ) {
+      add(
+        errors,
+        "CFG-QUALITY-003",
+        `${path}.${key}`,
+        "must be a non-empty string array",
+      );
+      continue;
+    }
+    for (const field of quality[key]) {
+      if (!outputFields.has(field)) {
+        add(
+          errors,
+          "CFG-QUALITY-004",
+          `${path}.${key}`,
+          `references unknown output field: ${field}`,
+        );
+      }
+    }
+  }
+
+  if (quality.freshness !== undefined) {
+    if (requireObject(errors, quality.freshness, `${path}.freshness`)) {
+      requireString(
+        errors,
+        quality.freshness.field,
+        `${path}.freshness.field`,
+      );
+      if (
+        typeof quality.freshness.field === "string" &&
+        !outputFields.has(quality.freshness.field)
+      ) {
+        add(
+          errors,
+          "CFG-QUALITY-004",
+          `${path}.freshness.field`,
+          `references unknown output field: ${quality.freshness.field}`,
+        );
+      }
+      if (
+        !Number.isFinite(quality.freshness.maxAgeMinutes) ||
+        quality.freshness.maxAgeMinutes <= 0
+      ) {
+        add(
+          errors,
+          "CFG-QUALITY-005",
+          `${path}.freshness.maxAgeMinutes`,
+          "must be a positive number",
+        );
+      }
+    }
+  }
+
+  if (quality.numericRanges !== undefined) {
+    if (
+      requireObject(errors, quality.numericRanges, `${path}.numericRanges`)
+    ) {
+      for (const [field, range] of Object.entries(quality.numericRanges)) {
+        if (!outputFields.has(field)) {
+          add(
+            errors,
+            "CFG-QUALITY-004",
+            `${path}.numericRanges.${field}`,
+            `references unknown output field: ${field}`,
+          );
+        }
+        if (
+          requireObject(
+            errors,
+            range,
+            `${path}.numericRanges.${field}`,
+          )
+        ) {
+          if (
+            range.min === undefined &&
+            range.max === undefined
+          ) {
+            add(
+              errors,
+              "CFG-QUALITY-006",
+              `${path}.numericRanges.${field}`,
+              "must configure min or max",
+            );
+          }
+          for (const boundary of ["min", "max"]) {
+            if (
+              range[boundary] !== undefined &&
+              !Number.isFinite(range[boundary])
+            ) {
+              add(
+                errors,
+                "CFG-QUALITY-006",
+                `${path}.numericRanges.${field}.${boundary}`,
+                "must be a finite number",
+              );
+            }
+          }
+          if (
+            Number.isFinite(range.min) &&
+            Number.isFinite(range.max) &&
+            range.min > range.max
+          ) {
+            add(
+              errors,
+              "CFG-QUALITY-007",
+              `${path}.numericRanges.${field}`,
+              "min must be less than or equal to max",
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
 function validateDataSource(errors, source, path) {
   if (!requireObject(errors, source, path)) return;
   for (const key of ["id", "name"]) {
@@ -201,6 +343,7 @@ function validateDataSource(errors, source, path) {
       );
     }
   }
+  validateQuality(errors, source.quality, source, `${path}.quality`);
 }
 
 export function validateWorkflowConfig(config) {

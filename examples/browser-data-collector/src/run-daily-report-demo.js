@@ -169,6 +169,79 @@ try {
   assert.equal(manualResult.dataResult.records[0].serviceId, "manual-001");
   assert.match(manualResult.dataResult.audit.file.sha256, /^[a-f0-9]{64}$/);
 
+  const qualityCsvPath = join(importDirectory, "quality-services.csv");
+  const recentTimestamp = new Date().toISOString();
+  await writeFile(
+    qualityCsvPath,
+    [
+      "serviceId,serviceName,region,status,instanceCount,alarmCount,updatedAt",
+      `quality-001,Quality DMS,cn-east-3,running,3,-1,${recentTimestamp}`,
+      `quality-001,,cn-east-3,running,2,0,${recentTimestamp}`,
+    ].join("\n"),
+    "utf8",
+  );
+  const warningConfig = structuredClone(manualConfig);
+  warningConfig.name = `${workflowName}-quality-warning`;
+  warningConfig.dataSource.file.path = qualityCsvPath;
+  warningConfig.dataSource.quality = {
+    mode: "warn",
+    minRecords: 3,
+    requiredFields: ["serviceId", "serviceName", "updatedAt"],
+    uniqueFields: ["serviceId"],
+    freshness: { field: "updatedAt", maxAgeMinutes: 60 },
+    numericRanges: {
+      instanceCount: { min: 0 },
+      alarmCount: { min: 0 },
+    },
+  };
+  const warningResult = await runDailyReport({
+    config: warningConfig,
+    dryRun: true,
+  });
+  assert.equal(warningResult.audit.status, "success_with_warnings");
+  assert.equal(warningResult.dataResult.quality.status, "warn");
+  assert.equal(warningResult.reportPackage.message.summary.warningCount, 4);
+  const qualityAudit = JSON.parse(
+    await readFile(
+      join(warningResult.runPath, "data-quality-audit.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(qualityAudit.status, "warning");
+  assert.equal(JSON.stringify(qualityAudit).includes("quality-001"), false);
+
+  const allQualityFailedConfig = structuredClone(warningConfig);
+  allQualityFailedConfig.name = `${workflowName}-quality-all-failed`;
+  allQualityFailedConfig.dataSource.quality.mode = "fail";
+  let allQualityFailedError;
+  try {
+    await runDailyReport({
+      config: allQualityFailedConfig,
+      dryRun: true,
+    });
+  } catch (error) {
+    allQualityFailedError = error;
+  }
+  assert.match(
+    allQualityFailedError.message,
+    /ALL_DATA_SOURCES_FAILED/,
+  );
+  const failedQualityAudit = JSON.parse(
+    await readFile(
+      join(
+        fileURLToPath(new URL("../runtime/daily-reports", import.meta.url)),
+        allQualityFailedError.workflowAudit.runId,
+        "data-quality-audit.json",
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(failedQualityAudit.status, "failed");
+  assert.equal(
+    JSON.stringify(failedQualityAudit).includes("quality-001"),
+    false,
+  );
+
   const catalogPath = join(importDirectory, "data-sources.json");
   const catalogSource = {
     ...manualSource,
@@ -223,6 +296,35 @@ try {
   assert.deepEqual(
     new Set(mixedResult.dataResults.map((result) => result.sourceId)),
     new Set(["mixed-browser-source", "manual-operations-source"]),
+  );
+
+  const qualityFailureConfig = structuredClone(config);
+  qualityFailureConfig.name = `${workflowName}-quality-partial`;
+  const qualityGoodSource = structuredClone(qualityFailureConfig.dataSource);
+  qualityGoodSource.id = "quality-good-source";
+  qualityGoodSource.profileName = `${workflowName}-quality-good-profile`;
+  const qualityFailedSource = structuredClone(manualSource);
+  qualityFailedSource.id = "quality-failed-source";
+  qualityFailedSource.name = "Quality failed source";
+  qualityFailedSource.file.path = qualityCsvPath;
+  qualityFailedSource.quality = {
+    ...warningConfig.dataSource.quality,
+    mode: "fail",
+  };
+  delete qualityFailureConfig.dataSource;
+  qualityFailureConfig.dataSources = [
+    qualityGoodSource,
+    qualityFailedSource,
+  ];
+  const qualityPartialResult = await runDailyReport({
+    config: qualityFailureConfig,
+    dryRun: true,
+  });
+  assert.equal(qualityPartialResult.audit.status, "partial_success");
+  assert.equal(qualityPartialResult.audit.sourceFailures[0].status, "quality_failed");
+  assert.equal(
+    qualityPartialResult.reportPackage.message.summary.warningCount,
+    5,
   );
 
   const staleTime = new Date(Date.now() - 48 * 60 * 60 * 1000);

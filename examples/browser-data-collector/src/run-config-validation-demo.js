@@ -92,4 +92,28 @@ const manualErrors = validateWorkflowConfig(invalidManual);
 assert.ok(manualErrors.some((error) => error.code === "CFG-FILE-001"));
 assert.ok(manualErrors.some((error) => error.code === "CFG-FILE-003"));
 
+const invalidQuality = structuredClone(validManual);
+invalidQuality.dataSource.quality = {
+  mode: "stop",
+  minRecords: -1,
+  requiredFields: ["missingField"],
+  freshness: {
+    field: "unknownTimestamp",
+    maxAgeMinutes: 0,
+  },
+  numericRanges: {
+    serviceId: { min: 10, max: 1 },
+  },
+};
+const qualityErrors = validateWorkflowConfig(invalidQuality);
+for (const code of [
+  "CFG-QUALITY-001",
+  "CFG-QUALITY-002",
+  "CFG-QUALITY-004",
+  "CFG-QUALITY-005",
+  "CFG-QUALITY-007",
+]) {
+  assert.ok(qualityErrors.some((error) => error.code === code));
+}
+
 console.log(`Config validation demo passed: ${errors.length} errors detected`);

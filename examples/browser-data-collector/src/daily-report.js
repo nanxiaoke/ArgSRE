@@ -110,11 +110,15 @@ export async function runDailyReport({
           status:
             error.message === "FINGERPRINT_AUTH_REQUIRED"
               ? "authentication_required"
-              : "failed",
+              : error.name === "DataQualityError"
+                ? "quality_failed"
+                : "failed",
           errorCode:
             error.message === "FINGERPRINT_AUTH_REQUIRED"
               ? "FINGERPRINT_AUTH_REQUIRED"
               : error.name,
+          quality: error.quality,
+          qualityWarnings: error.qualityWarnings ?? [],
           audit: error.dataSourceAudit,
         });
       }
@@ -152,6 +156,20 @@ export async function runDailyReport({
         _sourceId: result.sourceId,
       })),
     );
+    const qualityWarnings = dataResults.flatMap(
+      (result) => result.qualityWarnings ?? [],
+    );
+    const failedQualityWarnings = sourceFailures.flatMap(
+      (failure) => failure.qualityWarnings ?? [],
+    );
+    const reportWarnings = [
+      ...sourceFailures.map(
+        (failure) =>
+          `${failure.sourceName}: ${failure.status} (${failure.errorCode})`,
+      ),
+      ...qualityWarnings,
+      ...failedQualityWarnings,
+    ];
     const combinedSourceId = `workflow:${config.name}`;
     const historyResult = await historyStore.append({
       sourceId: combinedSourceId,
@@ -182,10 +200,7 @@ export async function runDailyReport({
           series: trendSeries,
           chartSvg: trendChartSvg,
         },
-        warnings: sourceFailures.map(
-          (failure) =>
-            `${failure.sourceName}: ${failure.status} (${failure.errorCode})`,
-        ),
+        warnings: reportWarnings,
       },
     );
     const priorSend = dryRun
@@ -246,13 +261,49 @@ export async function runDailyReport({
         `${JSON.stringify(trendSeries, null, 2)}\n`,
         "utf8",
       ),
+      writeFile(
+        join(runPath, "data-quality-audit.json"),
+        `${JSON.stringify(
+          {
+            status:
+              sourceFailures.some((failure) => failure.quality)
+                ? "partial_failure"
+                : qualityWarnings.length > 0
+                  ? "warning"
+                  : "pass",
+            sources: [
+              ...dataResults
+                .filter((result) => result.quality)
+                .map((result) => ({
+                  sourceId: result.sourceId,
+                  ...result.quality,
+                })),
+              ...sourceFailures
+                .filter((failure) => failure.quality)
+                .map((failure) => ({
+                  sourceId: failure.sourceId,
+                  ...failure.quality,
+                })),
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      ),
     ]);
 
     audit.status = "success";
+    if (qualityWarnings.length > 0) audit.status = "success_with_warnings";
     if (sourceFailures.length > 0) audit.status = "partial_success";
     audit.completedAt = new Date().toISOString();
     audit.sourceIds = dataResults.map((result) => result.sourceId);
     audit.recordCount = combinedRecords.length;
+    audit.quality = {
+      warningCount: qualityWarnings.length + failedQualityWarnings.length,
+      failedSourceCount: sourceFailures.filter((failure) => failure.quality)
+        .length,
+    };
     audit.history = {
       snapshotPath: historyResult.path,
       trendDays,
@@ -350,6 +401,26 @@ export async function runDailyReport({
         )}\n`,
         "utf8",
       );
+      const qualityFailures = error.sourceFailures.filter(
+        (failure) => failure.quality,
+      );
+      if (qualityFailures.length > 0) {
+        await writeFile(
+          join(runPath, "data-quality-audit.json"),
+          `${JSON.stringify(
+            {
+              status: "failed",
+              sources: qualityFailures.map((failure) => ({
+                sourceId: failure.sourceId,
+                ...failure.quality,
+              })),
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+      }
     }
     await writeFile(
       join(runPath, "workflow-audit.json"),

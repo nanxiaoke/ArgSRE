@@ -40,6 +40,7 @@
 | D10 | Git 和安全检查 | 是 |
 | D11 | 历史趋势和多数据源 | 是 |
 | D12 | 数据源目录和引用 | 是 |
+| D13 | 数据质量门禁和审计 | 是 |
 
 ## 4. D00 环境和版本确认
 
@@ -545,12 +546,69 @@ npm run daily:once -- \
 - `DAILY-CATALOG-004`：工作流引用禁用源。
 - `DAILY-CATALOG-005`：管理命令输出敏感配置。
 
-## 17. 脱敏反馈
+## 17. D13 数据质量门禁和审计
+
+在测试数据源中配置：
+
+```json
+{
+  "quality": {
+    "mode": "warn",
+    "minRecords": 1,
+    "requiredFields": ["serviceId", "serviceName", "updatedAt"],
+    "uniqueFields": ["serviceId"],
+    "freshness": {
+      "field": "updatedAt",
+      "maxAgeMinutes": 1440
+    },
+    "numericRanges": {
+      "alarmCount": {
+        "min": 0
+      }
+    }
+  }
+}
+```
+
+先执行独立测试：
+
+```bash
+npm run test:quality
+```
+
+再使用 Dry-run 分别准备正常数据和质量异常数据：
+
+```bash
+npm run daily:once -- \
+  --config runtime/local-config/daily-report.json \
+  --dry-run true
+```
+
+通过条件：
+
+- 正常数据质量状态为 `pass`。
+- `warn` 模式下任务状态为 `success_with_warnings`。
+- 质量问题出现在报告告警和 `data-quality-audit.json`。
+- `fail` 模式下问题数据源状态为 `quality_failed`。
+- 多数据源中质量失败不阻塞其他有效数据源。
+- 全部质量失败时不发送空业务报告。
+- 质量审计不包含触发问题的真实字段值。
+- 审计只包含错误码、字段、数量和记录索引样例。
+
+失败分类：
+
+- `DAILY-QUALITY-001`：质量配置引用未知输出字段。
+- `DAILY-QUALITY-002`：质量规则未发现构造的异常。
+- `DAILY-QUALITY-003`：`fail` 模式仍使用问题数据。
+- `DAILY-QUALITY-004`：质量审计泄露真实字段值。
+- `DAILY-QUALITY-005`：质量警告未进入报告。
+
+## 18. 脱敏反馈
 
 反馈：
 
 - Commit SHA。
-- D00-D12 状态。
+- D00-D13 状态。
 - 首个失败用例。
 - 认证状态。
 - HTTP 状态码。

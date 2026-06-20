@@ -40,6 +40,31 @@
         "updatedAt": "runtime.updatedAt"
       },
       "primaryKey": "serviceId"
+    },
+    "quality": {
+      "mode": "warn",
+      "minRecords": 1,
+      "requiredFields": [
+        "serviceId",
+        "serviceName",
+        "status",
+        "updatedAt"
+      ],
+      "uniqueFields": [
+        "serviceId"
+      ],
+      "freshness": {
+        "field": "updatedAt",
+        "maxAgeMinutes": 1440
+      },
+      "numericRanges": {
+        "instanceCount": {
+          "min": 0
+        },
+        "alarmCount": {
+          "min": 0
+        }
+      }
     }
   },
   "businessReport": {
