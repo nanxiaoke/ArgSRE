@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "dataSources": [
+    {
+      "type": "manual-file",
+      "id": "manual-operations-source",
+      "name": "Manual operations import",
+      "enabled": true,
+      "owner": "sre-operations",
+      "tags": [
+        "operations",
+        "manual-fallback"
+      ],
+      "file": {
+        "path": "config/manual-data.example.csv",
+        "format": "csv",
+        "encoding": "utf8",
+        "maxAgeHours": 24
+      },
+      "extract": {
+        "recordPath": [
+          "records"
+        ],
+        "fields": {
+          "serviceId": "serviceId",
+          "serviceName": "serviceName",
+          "region": "region",
+          "status": "status",
+          "instanceCount": "instanceCount",
+          "alarmCount": "alarmCount",
+          "updatedAt": "updatedAt"
+        },
+        "primaryKey": "serviceId"
+      }
+    },
+    {
+      "id": "browser-operations-source",
+      "name": "Browser operations source",
+      "enabled": false,
+      "owner": "sre-operations",
+      "tags": [
+        "operations",
+        "browser"
+      ],
+      "profileName": "daily-report",
+      "entryUrl": "https://replace-with-internal-target.example/",
+      "targetUrlPattern": "/app",
+      "headless": true,
+      "auth": {
+        "pageUrlPattern": "/auth",
+        "stateAttribute": "data-auth-state",
+        "quickButton": "[data-testid='quick-auth']",
+        "fingerprintButton": "[data-testid='fingerprint-auth']",
+        "timeoutMs": 60000
+      },
+      "request": {
+        "method": "POST",
+        "url": "https://replace-with-internal-target.example/api/query",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "extract": {
+        "recordPath": [
+          "data",
+          "records"
+        ],
+        "fields": {
+          "serviceId": "service.id",
+          "serviceName": "service.name",
+          "region": "deployment.region",
+          "status": "runtime.status",
+          "instanceCount": "runtime.instanceCount",
+          "alarmCount": "runtime.alarmCount",
+          "updatedAt": "runtime.updatedAt"
+        },
+        "primaryKey": "serviceId"
+      }
+    }
+  ]
+}

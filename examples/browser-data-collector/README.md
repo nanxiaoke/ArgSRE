@@ -255,6 +255,12 @@ docs/test-plans/daily-report-mvp-v1.md
 docs/manual-data-import.md
 ```
 
+数据源目录与复用编排：
+
+```text
+docs/data-source-catalog.md
+```
+
 ## 采集结果
 
 结果写入：

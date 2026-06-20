@@ -229,9 +229,33 @@ src/core/trend-builder.js
 
 详细配置和验收见 `docs/manual-data-import.md`。
 
+### 2.11 数据源目录
+
+位置：
+
+```text
+src/core/data-source-catalog.js
+src/core/workflow-config-loader.js
+src/catalog.js
+```
+
+职责：
+
+- 校验平台级数据源目录。
+- 根据稳定 ID 将目录条目解析到工作流。
+- 阻止不存在或已禁用的数据源执行。
+- 为人工管理和后续运营平台输出非敏感元数据。
+- 保持现有内联数据源配置兼容。
+
+工作流可以使用 `dataSourceCatalog + dataSourceRefs`，但不能与
+`dataSource/dataSources` 混用。解析后仍转换为普通 `dataSources`，
+下游模块不依赖目录实现。
+
+详细说明见 `docs/data-source-catalog.md`。
+
 ## 3. 配置分区
 
-配置文件分为四个独立部分：
+配置文件分为独立部分：
 
 ```json
 {

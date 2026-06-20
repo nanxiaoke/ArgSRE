@@ -1,0 +1,29 @@
+{
+  "name": "catalog-daily-report",
+  "dataSourceCatalog": "data-source-catalog.example.json",
+  "dataSourceRefs": [
+    "manual-operations-source"
+  ],
+  "businessReport": {
+    "title": "SRE Catalog Report",
+    "chart": {
+      "categoryField": "serviceName",
+      "valueField": "alarmCount",
+      "title": "Alarms by service"
+    }
+  },
+  "messageChannel": {
+    "type": "local-file"
+  },
+  "history": {
+    "trendDays": 7,
+    "retentionDays": 90,
+    "trendChart": {
+      "title": "7-day alarm trend",
+      "valueField": "totalAlarms"
+    }
+  },
+  "schedule": {
+    "time": "09:00"
+  }
+}

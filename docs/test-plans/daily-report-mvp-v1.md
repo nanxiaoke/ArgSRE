@@ -39,6 +39,7 @@
 | D09 | 每日调度检查 | 是 |
 | D10 | Git 和安全检查 | 是 |
 | D11 | 历史趋势和多数据源 | 是 |
+| D12 | 数据源目录和引用 | 是 |
 
 ## 4. D00 环境和版本确认
 
@@ -495,12 +496,61 @@ runtime/daily-reports/<run-id>/trend-chart.svg
 - `DAILY-MULTI-003`：部分失败未在报告中提示。
 - `DAILY-MULTI-004`：全部失败仍发送空报告。
 
-## 16. 脱敏反馈
+## 16. D12 数据源目录和引用
+
+准备私有目录：
+
+```bash
+cp config/data-source-catalog.example.json \
+  runtime/local-config/data-sources.json
+```
+
+校验和查看：
+
+```bash
+npm run catalog:validate -- \
+  --catalog runtime/local-config/data-sources.json
+
+npm run catalog:list -- \
+  --catalog runtime/local-config/data-sources.json \
+  --status enabled
+```
+
+创建仅包含 `dataSourceCatalog` 和 `dataSourceRefs` 的工作流配置，然后执行：
+
+```bash
+npm run daily:validate -- \
+  --config runtime/local-config/daily-report.json
+
+npm run daily:once -- \
+  --config runtime/local-config/daily-report.json \
+  --dry-run true
+```
+
+通过条件：
+
+- 目录校验输出 `PASS`。
+- 列表不出现 URL、请求头、请求体和文件路径。
+- 不存在的 ID 在采集前失败，错误码为 `CAT-REF-001`。
+- 禁用的 ID 在采集前失败，错误码为 `CAT-REF-002`。
+- 引用源执行成功并进入 `data-source-audits.json`。
+- 审计记录 `sourceType`、`owner` 和 `tags`。
+- 内联数据源与目录引用混用时校验失败。
+
+失败分类：
+
+- `DAILY-CATALOG-001`：目录 JSON 或版本无效。
+- `DAILY-CATALOG-002`：数据源 ID 重复。
+- `DAILY-CATALOG-003`：工作流引用不存在。
+- `DAILY-CATALOG-004`：工作流引用禁用源。
+- `DAILY-CATALOG-005`：管理命令输出敏感配置。
+
+## 17. 脱敏反馈
 
 反馈：
 
 - Commit SHA。
-- D00-D11 状态。
+- D00-D12 状态。
 - 首个失败用例。
 - 认证状态。
 - HTTP 状态码。

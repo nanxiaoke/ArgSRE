@@ -169,6 +169,43 @@ try {
   assert.equal(manualResult.dataResult.records[0].serviceId, "manual-001");
   assert.match(manualResult.dataResult.audit.file.sha256, /^[a-f0-9]{64}$/);
 
+  const catalogPath = join(importDirectory, "data-sources.json");
+  const catalogSource = {
+    ...manualSource,
+    owner: "sre-operations",
+    tags: ["operations", "manual-fallback"],
+    enabled: true,
+  };
+  await writeFile(
+    catalogPath,
+    JSON.stringify(
+      {
+        version: 1,
+        dataSources: [catalogSource],
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+  const catalogConfig = structuredClone(config);
+  catalogConfig.name = `${workflowName}-catalog`;
+  catalogConfig.messageChannel = { type: "local-file" };
+  delete catalogConfig.dataSource;
+  catalogConfig.dataSourceCatalog = catalogPath;
+  catalogConfig.dataSourceRefs = ["manual-operations-source"];
+  const catalogResult = await runDailyReport({
+    config: catalogConfig,
+    dryRun: true,
+  });
+  assert.equal(catalogResult.audit.status, "success");
+  assert.equal(catalogResult.dataResults.length, 1);
+  assert.equal(catalogResult.dataResult.audit.owner, "sre-operations");
+  assert.deepEqual(catalogResult.dataResult.audit.tags, [
+    "operations",
+    "manual-fallback",
+  ]);
+
   const mixedConfig = structuredClone(config);
   mixedConfig.name = `${workflowName}-mixed`;
   const browserSource = structuredClone(mixedConfig.dataSource);

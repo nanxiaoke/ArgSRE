@@ -1,9 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { createMessageSender } from "./adapters/message-sender.js";
-import { assertValidWorkflowConfig } from "./core/config-validator.js";
 import { runConfiguredDataSource } from "./core/data-source-dispatcher.js";
 import {
   createIdempotencyStore,
@@ -16,6 +15,10 @@ import {
   renderTrendChart,
 } from "./core/trend-builder.js";
 import { createWorkflowStateStore } from "./core/workflow-state.js";
+import {
+  loadWorkflowConfig,
+  resolveWorkflowConfig,
+} from "./core/workflow-config-loader.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -28,13 +31,13 @@ function getArgument(name, fallback) {
 }
 
 export async function runDailyReport({
-  config,
+  config: inputConfig,
   simulateFingerprint = false,
   messageSender,
   dryRun = false,
 } = {}) {
-  if (!config) throw new Error("workflow config is required");
-  assertValidWorkflowConfig(config);
+  if (!inputConfig) throw new Error("workflow config is required");
+  const config = await resolveWorkflowConfig(inputConfig);
 
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const runtimeRoot = join(ROOT, "runtime");
@@ -361,7 +364,7 @@ export async function runDailyReport({
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const configPath = getArgument("config");
   if (!configPath) throw new Error("--config is required");
-  const config = JSON.parse(await readFile(resolve(configPath), "utf8"));
+  const config = await loadWorkflowConfig(configPath);
   const simulateFingerprint =
     getArgument("simulate-fingerprint", "false") === "true";
   const dryRun = getArgument("dry-run", "false") === "true";

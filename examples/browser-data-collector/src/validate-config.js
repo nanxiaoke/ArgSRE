@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { assertValidWorkflowConfig } from "./core/config-validator.js";
+import { loadWorkflowConfig } from "./core/workflow-config-loader.js";
 
 function getArgument(name, fallback) {
   const prefix = `--${name}=`;
@@ -12,6 +11,5 @@ function getArgument(name, fallback) {
 
 const configPath = getArgument("config");
 if (!configPath) throw new Error("--config is required");
-const config = JSON.parse(await readFile(resolve(configPath), "utf8"));
-assertValidWorkflowConfig(config);
+await loadWorkflowConfig(configPath);
 console.log(`PASS: ${resolve(configPath)}`);

@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDailyReport } from "./daily-report.js";
-import { assertValidWorkflowConfig } from "./core/config-validator.js";
+import {
+  loadWorkflowConfig,
+  resolveWorkflowConfig,
+} from "./core/workflow-config-loader.js";
 
 function getArgument(name, fallback) {
   const prefix = `--${name}=`;
@@ -31,8 +32,12 @@ export function millisecondsUntil(time, now = new Date()) {
   return next.getTime() - now.getTime();
 }
 
-export async function startDailyScheduler({ config, runOnStart = false }) {
-  assertValidWorkflowConfig(config);
+export async function startDailyScheduler({
+  config: inputConfig,
+  runOnStart = false,
+}) {
+  if (!inputConfig) throw new Error("workflow config is required");
+  const config = await resolveWorkflowConfig(inputConfig);
   let stopped = false;
   let timer;
 
@@ -72,7 +77,7 @@ export async function startDailyScheduler({ config, runOnStart = false }) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const configPath = getArgument("config");
   if (!configPath) throw new Error("--config is required");
-  const config = JSON.parse(await readFile(resolve(configPath), "utf8"));
+  const config = await loadWorkflowConfig(configPath);
   const runOnStart = getArgument("run-now", "false") === "true";
   await startDailyScheduler({ config, runOnStart });
 }
