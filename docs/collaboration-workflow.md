@@ -129,6 +129,8 @@ npm test
 
 详细验收用例见 `docs/test-plans/browser-probe-v1.md`。后续每个需要内网验证的版本都必须提供同等级别的测试计划。
 
+每日自动采集与报告 MVP 的验收用例见 `docs/test-plans/daily-report-mvp-v1.md`。
+
 接入真实页面时，建议复制配置模板到 Git 忽略目录，例如：
 
 ```text

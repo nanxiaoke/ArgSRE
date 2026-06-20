@@ -8,13 +8,16 @@
     "collect:valid": "node src/collector.js --mode valid",
     "collect:quick": "node src/collector.js --mode quick",
     "collect:fingerprint": "node src/collector.js --mode fingerprint",
+    "daily:once": "node src/daily-report.js",
+    "daily:schedule": "node src/daily-scheduler.js",
     "doctor": "node src/doctor.js",
     "probe": "node src/probe.js",
     "inspect": "node src/inspect-probe.js",
     "report": "node src/report.js",
     "test:collector": "node src/run-demo.js",
+    "test:daily": "node src/run-daily-report-demo.js",
     "test:probe": "node src/run-probe-demo.js",
-    "test": "npm run test:collector && npm run test:probe"
+    "test": "npm run test:collector && npm run test:probe && npm run test:daily"
   },
   "dependencies": {
     "playwright-core": "^1.57.0"

@@ -166,6 +166,7 @@ function appPage() {
 }
 
 export function startMockServer({ port = DEFAULT_PORT } = {}) {
+  const imReports = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const cookies = parseCookies(req.headers.cookie);
@@ -256,6 +257,16 @@ export function startMockServer({ port = DEFAULT_PORT } = {}) {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/im/reports") {
+      const body = await readJson(req);
+      imReports.push(body);
+      json(res, 200, {
+        messageId: `mock-message-${imReports.length}`,
+        accepted: true,
+      });
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not Found");
   });
@@ -266,6 +277,7 @@ export function startMockServer({ port = DEFAULT_PORT } = {}) {
       resolve({
         server,
         baseUrl: `http://127.0.0.1:${port}`,
+        getImReports: () => structuredClone(imReports),
         close: () =>
           new Promise((closeResolve, closeReject) => {
             server.close((error) =>

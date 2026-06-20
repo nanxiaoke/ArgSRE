@@ -18,6 +18,11 @@
 - `src/collector.js`：Playwright 采集器。
 - `src/probe.js`：真实页面探测器。
 - `src/inspect-probe.js`：查看请求候选和响应字段路径。
+- `src/core/data-source-runner.js`：独立数据源执行器。
+- `src/core/report-builder.js`：独立业务报告与图表构建器。
+- `src/adapters/message-sender.js`：独立消息通道适配器。
+- `src/daily-report.js`：每日工作流编排。
+- `src/daily-scheduler.js`：每日调度器。
 - `src/run-demo.js`：三种认证场景的端到端验证。
 - `runtime/`：运行时 profile、采集结果和审计文件。
 
@@ -160,6 +165,48 @@ runtime/reports/internal-validation-feedback.md
 ```
 
 反馈前仍需人工检查和补充测试状态。
+
+## 每日自动报告 MVP
+
+复制内网私有配置：
+
+```bash
+mkdir -p runtime/local-config
+cp config/daily-report.example.json runtime/local-config/daily-report.json
+```
+
+配置分为：
+
+- `dataSource`：认证、HTTP 请求、字段提取。
+- `businessReport`：汇总和图表。
+- `messageChannel`：IM 或其他消息通道。
+- `schedule`：每日时间。
+
+单次执行：
+
+```bash
+npm run daily:once -- --config runtime/local-config/daily-report.json
+```
+
+长期调度：
+
+```bash
+npm run daily:schedule -- \
+  --config runtime/local-config/daily-report.json \
+  --run-now true
+```
+
+设计说明：
+
+```text
+docs/daily-report-mvp-design.md
+```
+
+详细验收：
+
+```text
+docs/test-plans/daily-report-mvp-v1.md
+```
 
 ## 采集结果
 

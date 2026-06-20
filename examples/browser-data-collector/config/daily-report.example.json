@@ -1,0 +1,63 @@
+{
+  "name": "daily-sre-operations-report",
+  "dataSource": {
+    "id": "internal-operations-source",
+    "name": "内部运营数据源",
+    "profileName": "daily-report",
+    "entryUrl": "https://replace-with-internal-target.example/",
+    "targetUrlPattern": "/app",
+    "headless": true,
+    "auth": {
+      "pageUrlPattern": "/auth",
+      "stateAttribute": "data-auth-state",
+      "quickButton": "[data-testid='quick-auth']",
+      "fingerprintButton": "[data-testid='fingerprint-auth']",
+      "timeoutMs": 60000
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://replace-with-internal-target.example/api/query",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "region": "example-region",
+        "timeRange": "last_24_hours"
+      }
+    },
+    "extract": {
+      "recordPath": [
+        "data",
+        "records"
+      ],
+      "fields": {
+        "serviceId": "service.id",
+        "serviceName": "service.name",
+        "region": "deployment.region",
+        "status": "runtime.status",
+        "instanceCount": "runtime.instanceCount",
+        "alarmCount": "runtime.alarmCount",
+        "updatedAt": "runtime.updatedAt"
+      },
+      "primaryKey": "serviceId"
+    }
+  },
+  "businessReport": {
+    "title": "SRE 每日运营报告",
+    "chart": {
+      "categoryField": "serviceName",
+      "valueField": "alarmCount",
+      "title": "各服务告警数量"
+    }
+  },
+  "messageChannel": {
+    "type": "webhook-json",
+    "endpoint": "https://replace-with-internal-im.example/api/messages",
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "schedule": {
+    "time": "09:00"
+  }
+}
