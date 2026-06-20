@@ -53,4 +53,43 @@ assert.throws(
   () => assertValidWorkflowConfig(invalid),
   /Workflow config validation failed/,
 );
+
+const validManual = {
+  name: "manual-workflow",
+  dataSource: {
+    type: "manual-file",
+    id: "manual-source",
+    name: "Manual source",
+    file: {
+      path: "runtime/imports/services.csv",
+      format: "csv",
+      encoding: "utf8",
+      maxAgeHours: 24,
+    },
+    extract: {
+      recordPath: ["records"],
+      fields: { serviceId: "serviceId" },
+      primaryKey: "serviceId",
+    },
+  },
+  businessReport: {
+    title: "Manual report",
+    chart: {
+      categoryField: "serviceId",
+      valueField: "serviceId",
+      title: "Manual chart",
+    },
+  },
+  messageChannel: { type: "local-file" },
+  schedule: { time: "09:00" },
+};
+assert.deepEqual(validateWorkflowConfig(validManual), []);
+
+const invalidManual = structuredClone(validManual);
+invalidManual.dataSource.file.format = "xlsx";
+invalidManual.dataSource.file.maxAgeHours = 0;
+const manualErrors = validateWorkflowConfig(invalidManual);
+assert.ok(manualErrors.some((error) => error.code === "CFG-FILE-001"));
+assert.ok(manualErrors.some((error) => error.code === "CFG-FILE-003"));
+
 console.log(`Config validation demo passed: ${errors.length} errors detected`);

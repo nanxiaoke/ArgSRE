@@ -65,41 +65,90 @@ function validateRetry(errors, value, path) {
 
 function validateDataSource(errors, source, path) {
   if (!requireObject(errors, source, path)) return;
-  for (const key of ["id", "name", "profileName", "targetUrlPattern"]) {
+  for (const key of ["id", "name"]) {
     requireString(errors, source[key], `${path}.${key}`);
   }
-  requireUrl(errors, source.entryUrl, `${path}.entryUrl`);
+  const type = source.type ?? "browser-http";
+  if (!["browser-http", "manual-file"].includes(type)) {
+    add(
+      errors,
+      "CFG-SOURCE-004",
+      `${path}.type`,
+      "must be browser-http or manual-file",
+    );
+    return;
+  }
 
-  if (requireObject(errors, source.auth, `${path}.auth`)) {
-    for (const key of [
-      "pageUrlPattern",
-      "stateAttribute",
-      "quickButton",
-      "fingerprintButton",
-    ]) {
-      requireString(errors, source.auth[key], `${path}.auth.${key}`);
+  if (type === "browser-http") {
+    for (const key of ["profileName", "targetUrlPattern"]) {
+      requireString(errors, source[key], `${path}.${key}`);
     }
-    if (!Number.isFinite(source.auth.timeoutMs) || source.auth.timeoutMs <= 0) {
+    requireUrl(errors, source.entryUrl, `${path}.entryUrl`);
+
+    if (requireObject(errors, source.auth, `${path}.auth`)) {
+      for (const key of [
+        "pageUrlPattern",
+        "stateAttribute",
+        "quickButton",
+        "fingerprintButton",
+      ]) {
+        requireString(errors, source.auth[key], `${path}.auth.${key}`);
+      }
+      if (!Number.isFinite(source.auth.timeoutMs) || source.auth.timeoutMs <= 0) {
+        add(
+          errors,
+          "CFG-AUTH-001",
+          `${path}.auth.timeoutMs`,
+          "must be a positive number",
+        );
+      }
+    }
+
+    if (requireObject(errors, source.request, `${path}.request`)) {
+      const method = source.request.method?.toUpperCase();
+      if (!HTTP_METHODS.has(method)) {
+        add(
+          errors,
+          "CFG-HTTP-001",
+          `${path}.request.method`,
+          `must be one of ${[...HTTP_METHODS].join(", ")}`,
+        );
+      }
+      requireUrl(errors, source.request.url, `${path}.request.url`);
+    }
+  } else if (requireObject(errors, source.file, `${path}.file`)) {
+    requireString(errors, source.file.path, `${path}.file.path`);
+    if (!["json", "csv"].includes(source.file.format)) {
       add(
         errors,
-        "CFG-AUTH-001",
-        `${path}.auth.timeoutMs`,
+        "CFG-FILE-001",
+        `${path}.file.format`,
+        "must be json or csv",
+      );
+    }
+    if (
+      source.file.encoding !== undefined &&
+      source.file.encoding !== "utf8"
+    ) {
+      add(
+        errors,
+        "CFG-FILE-002",
+        `${path}.file.encoding`,
+        "currently only utf8 is supported",
+      );
+    }
+    if (
+      source.file.maxAgeHours !== undefined &&
+      (!Number.isFinite(source.file.maxAgeHours) ||
+        source.file.maxAgeHours <= 0)
+    ) {
+      add(
+        errors,
+        "CFG-FILE-003",
+        `${path}.file.maxAgeHours`,
         "must be a positive number",
       );
     }
-  }
-
-  if (requireObject(errors, source.request, `${path}.request`)) {
-    const method = source.request.method?.toUpperCase();
-    if (!HTTP_METHODS.has(method)) {
-      add(
-        errors,
-        "CFG-HTTP-001",
-        `${path}.request.method`,
-        `must be one of ${[...HTTP_METHODS].join(", ")}`,
-      );
-    }
-    requireUrl(errors, source.request.url, `${path}.request.url`);
   }
 
   if (requireObject(errors, source.extract, `${path}.extract`)) {

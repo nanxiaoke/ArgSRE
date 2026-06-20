@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { createMessageSender } from "./adapters/message-sender.js";
 import { assertValidWorkflowConfig } from "./core/config-validator.js";
-import { runDataSource } from "./core/data-source-runner.js";
+import { runConfiguredDataSource } from "./core/data-source-dispatcher.js";
 import {
   createIdempotencyStore,
   localDateKey,
@@ -71,7 +71,7 @@ export async function runDailyReport({
 
     for (const sourceConfig of sourceConfigs) {
       try {
-        const dataResult = await runDataSource({
+        const dataResult = await runConfiguredDataSource({
           config: sourceConfig,
           runtimeRoot,
           simulateFingerprint,

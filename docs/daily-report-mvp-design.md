@@ -28,15 +28,20 @@
 位置：
 
 ```text
+src/core/data-source-dispatcher.js
 src/core/data-source-runner.js
+src/core/manual-file-runner.js
 ```
 
 职责：
 
+- 按数据源类型分派获取适配器。
 - 打开浏览器并建立认证会话。
 - 自动处理快速认证。
 - 产生人工认证事件。
 - 使用浏览器上下文的 HTTP 客户端发送请求。
+- 从人工 JSON 或 CSV 文件导入记录。
+- 校验人工文件新鲜度并记录文件摘要。
 - 提取标准记录。
 - 输出数据源审计。
 
@@ -210,6 +215,19 @@ src/core/trend-builder.js
 - 至少一个成功时生成部分成功报告。
 - 全部失败时工作流失败。
 - 全部等待认证时工作流阻塞。
+
+### 2.10 人工导入数据源
+
+`manual-file` 与默认的 `browser-http` 使用相同标准记录输出：
+
+- 支持 UTF-8 JSON 和 CSV。
+- JSON 使用通用 `recordPath` 和字段点路径。
+- CSV 先转换为统一记录数组，再使用相同字段映射。
+- 可配置 `maxAgeHours`，避免误用过期文件。
+- 审计记录文件名、大小、修改时间、年龄和 SHA-256，不复制原始内容。
+- 可以与浏览器数据源共同参与 `dataSources` 编排。
+
+详细配置和验收见 `docs/manual-data-import.md`。
 
 ## 3. 配置分区
 

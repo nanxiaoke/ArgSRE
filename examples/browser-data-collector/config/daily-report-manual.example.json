@@ -1,0 +1,51 @@
+{
+  "name": "manual-import-daily-report",
+  "dataSource": {
+    "type": "manual-file",
+    "id": "manual-operations-source",
+    "name": "Manual operations import",
+    "file": {
+      "path": "config/manual-data.example.csv",
+      "format": "csv",
+      "encoding": "utf8",
+      "maxAgeHours": 24
+    },
+    "extract": {
+      "recordPath": [
+        "records"
+      ],
+      "fields": {
+        "serviceId": "serviceId",
+        "serviceName": "serviceName",
+        "region": "region",
+        "status": "status",
+        "instanceCount": "instanceCount",
+        "alarmCount": "alarmCount",
+        "updatedAt": "updatedAt"
+      },
+      "primaryKey": "serviceId"
+    }
+  },
+  "businessReport": {
+    "title": "SRE Manual Import Report",
+    "chart": {
+      "categoryField": "serviceName",
+      "valueField": "alarmCount",
+      "title": "Alarms by service"
+    }
+  },
+  "messageChannel": {
+    "type": "local-file"
+  },
+  "history": {
+    "trendDays": 7,
+    "retentionDays": 90,
+    "trendChart": {
+      "title": "7-day alarm trend",
+      "valueField": "totalAlarms"
+    }
+  },
+  "schedule": {
+    "time": "09:00"
+  }
+}

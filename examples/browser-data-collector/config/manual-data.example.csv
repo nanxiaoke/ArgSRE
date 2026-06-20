@@ -1,0 +1,3 @@
+serviceId,serviceName,region,status,instanceCount,alarmCount,updatedAt
+manual-dws-001,DWS Manual Import,cn-north-4,running,6,1,2026-06-20T08:00:00.000Z
+manual-dms-001,DMS Manual Import,cn-east-3,running,4,0,2026-06-20T08:00:00.000Z

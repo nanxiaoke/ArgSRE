@@ -249,6 +249,12 @@ docs/daily-report-mvp-design.md
 docs/test-plans/daily-report-mvp-v1.md
 ```
 
+人工导入与自动采集降级：
+
+```text
+docs/manual-data-import.md
+```
+
 ## 采集结果
 
 结果写入：

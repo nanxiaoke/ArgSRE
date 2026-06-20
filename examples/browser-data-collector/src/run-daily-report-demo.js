@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runDailyReport } from "./daily-report.js";
 import { millisecondsUntil } from "./daily-scheduler.js";
 import { startMockServer } from "./mock-server.js";
@@ -115,6 +116,87 @@ try {
     await readFile(join(dryRunResult.runPath, "message-preview.json"), "utf8"),
   );
   assert.equal(preview.type, "daily_sre_report");
+
+  const importDirectory = join(
+    fileURLToPath(new URL("../runtime/imports", import.meta.url)),
+    workflowName,
+  );
+  await mkdir(importDirectory, { recursive: true });
+  const csvPath = join(importDirectory, "manual-services.csv");
+  await writeFile(
+    csvPath,
+    [
+      "serviceId,serviceName,region,status,instanceCount,alarmCount,updatedAt",
+      "manual-001,Manual DMS,cn-east-3,running,3,1,2026-06-20T08:00:00.000Z",
+    ].join("\n"),
+    "utf8",
+  );
+  const manualSource = {
+    type: "manual-file",
+    id: "manual-operations-source",
+    name: "Manual operations import",
+    file: {
+      path: csvPath,
+      format: "csv",
+      encoding: "utf8",
+      maxAgeHours: 24,
+    },
+    extract: {
+      recordPath: ["records"],
+      fields: {
+        serviceId: "serviceId",
+        serviceName: "serviceName",
+        region: "region",
+        status: "status",
+        instanceCount: "instanceCount",
+        alarmCount: "alarmCount",
+        updatedAt: "updatedAt",
+      },
+      primaryKey: "serviceId",
+    },
+  };
+  const manualConfig = structuredClone(config);
+  manualConfig.name = `${workflowName}-manual`;
+  manualConfig.messageChannel = { type: "local-file" };
+  manualConfig.dataSource = manualSource;
+  const manualResult = await runDailyReport({
+    config: manualConfig,
+    dryRun: true,
+  });
+  assert.equal(manualResult.audit.status, "success");
+  assert.equal(manualResult.dataResult.audit.sourceType, "manual-file");
+  assert.equal(manualResult.dataResult.audit.recordCount, 1);
+  assert.equal(manualResult.dataResult.records[0].serviceId, "manual-001");
+  assert.match(manualResult.dataResult.audit.file.sha256, /^[a-f0-9]{64}$/);
+
+  const mixedConfig = structuredClone(config);
+  mixedConfig.name = `${workflowName}-mixed`;
+  const browserSource = structuredClone(mixedConfig.dataSource);
+  browserSource.id = "mixed-browser-source";
+  browserSource.profileName = `${workflowName}-mixed-browser-profile`;
+  delete mixedConfig.dataSource;
+  mixedConfig.dataSources = [browserSource, manualSource];
+  const mixedResult = await runDailyReport({
+    config: mixedConfig,
+    dryRun: true,
+  });
+  assert.equal(mixedResult.audit.status, "success");
+  assert.equal(mixedResult.dataResults.length, 2);
+  assert.equal(mixedResult.audit.recordCount, 3);
+  assert.deepEqual(
+    new Set(mixedResult.dataResults.map((result) => result.sourceId)),
+    new Set(["mixed-browser-source", "manual-operations-source"]),
+  );
+
+  const staleTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  await utimes(csvPath, staleTime, staleTime);
+  const staleConfig = structuredClone(manualConfig);
+  staleConfig.name = `${workflowName}-manual-stale`;
+  staleConfig.dataSource.file.maxAgeHours = 1;
+  await assert.rejects(
+    () => runDailyReport({ config: staleConfig, dryRun: true }),
+    /ALL_DATA_SOURCES_FAILED/,
+  );
 
   const partialConfig = structuredClone(config);
   partialConfig.name = `${workflowName}-partial`;
