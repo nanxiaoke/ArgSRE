@@ -116,6 +116,27 @@ try {
   );
   assert.equal(preview.type, "daily_sre_report");
 
+  const partialConfig = structuredClone(config);
+  partialConfig.name = `${workflowName}-partial`;
+  const goodSource = structuredClone(partialConfig.dataSource);
+  goodSource.id = "good-source";
+  goodSource.profileName = `${workflowName}-partial-good-profile`;
+  const failedSource = structuredClone(partialConfig.dataSource);
+  failedSource.id = "failed-source";
+  failedSource.name = "失败模拟数据源";
+  failedSource.profileName = `${workflowName}-partial-failed-profile`;
+  failedSource.request.url = `${mock.baseUrl}/api/ops/fail`;
+  delete partialConfig.dataSource;
+  partialConfig.dataSources = [goodSource, failedSource];
+  const partialResult = await runDailyReport({
+    config: partialConfig,
+    dryRun: true,
+  });
+  assert.equal(partialResult.audit.status, "partial_success");
+  assert.equal(partialResult.dataResults.length, 1);
+  assert.equal(partialResult.audit.sourceFailures.length, 1);
+  assert.equal(partialResult.reportPackage.message.summary.warningCount, 1);
+
   const failureConfig = structuredClone(config);
   failureConfig.name = `${workflowName}-failure`;
   failureConfig.dataSource.profileName = `${workflowName}-failure-profile`;
@@ -124,7 +145,7 @@ try {
   failureConfig.reliability.failureNotificationThreshold = 1;
   await assert.rejects(
     () => runDailyReport({ config: failureConfig }),
-    /Data request failed: 503/,
+    /ALL_DATA_SOURCES_FAILED/,
   );
   const reportsAfterFailure = mock.getImReports();
   assert.equal(reportsAfterFailure.length, 2);
@@ -144,7 +165,10 @@ try {
   } catch (error) {
     fingerprintError = error;
   }
-  assert.match(fingerprintError.message, /FINGERPRINT_AUTH_REQUIRED/);
+  assert.match(
+    fingerprintError.message,
+    /ALL_DATA_SOURCES_AUTH_REQUIRED/,
+  );
   assert.equal(
     fingerprintError.workflowAudit.workflowState.lastStatus,
     "blocked",

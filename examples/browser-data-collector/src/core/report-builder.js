@@ -67,7 +67,7 @@ export function renderBarChart(records, chartConfig) {
 </svg>`;
 }
 
-export function buildReportPackage(records, config) {
+export function buildReportPackage(records, config, options = {}) {
   const report = assembleReport(records);
   const chartSvg = renderBarChart(records, config.chart);
   const statusSummary = Object.entries(report.statusCounts)
@@ -91,10 +91,20 @@ export function buildReportPackage(records, config) {
 
 ${detailRows || "- 无数据"}
 `;
+  const trend = options.trend;
+  const trendSection =
+    trend?.series?.length > 0
+      ? `\n## ${trend.title}\n\n- 时间点数量：${trend.series.length}\n- 最新值：${trend.series.at(-1)?.[trend.valueField] ?? 0}\n`
+      : "";
+  const warningSection =
+    options.warnings?.length > 0
+      ? `\n## 数据源告警\n\n${options.warnings.map((warning) => `- ${warning}`).join("\n")}\n`
+      : "";
+  const completeMarkdown = `${markdown}${trendSection}${warningSection}`;
 
   return {
     report,
-    markdown,
+    markdown: completeMarkdown,
     chartSvg,
     message: {
       type: "daily_sre_report",
@@ -105,13 +115,24 @@ ${detailRows || "- 无数据"}
         totalInstances: report.totalInstances,
         totalAlarms: report.totalAlarms,
         statusCounts: report.statusCounts,
+        warningCount: options.warnings?.length ?? 0,
       },
-      markdown,
+      warnings: options.warnings ?? [],
+      markdown: completeMarkdown,
       chart: {
         fileName: "daily-report.svg",
         mimeType: "image/svg+xml",
         contentBase64: Buffer.from(chartSvg, "utf8").toString("base64"),
       },
+      trendChart: trend?.chartSvg
+        ? {
+            fileName: "trend-chart.svg",
+            mimeType: "image/svg+xml",
+            contentBase64: Buffer.from(trend.chartSvg, "utf8").toString(
+              "base64",
+            ),
+          }
+        : undefined,
     },
   };
 }

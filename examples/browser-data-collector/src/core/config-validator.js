@@ -63,100 +63,140 @@ function validateRetry(errors, value, path) {
   }
 }
 
+function validateDataSource(errors, source, path) {
+  if (!requireObject(errors, source, path)) return;
+  for (const key of ["id", "name", "profileName", "targetUrlPattern"]) {
+    requireString(errors, source[key], `${path}.${key}`);
+  }
+  requireUrl(errors, source.entryUrl, `${path}.entryUrl`);
+
+  if (requireObject(errors, source.auth, `${path}.auth`)) {
+    for (const key of [
+      "pageUrlPattern",
+      "stateAttribute",
+      "quickButton",
+      "fingerprintButton",
+    ]) {
+      requireString(errors, source.auth[key], `${path}.auth.${key}`);
+    }
+    if (!Number.isFinite(source.auth.timeoutMs) || source.auth.timeoutMs <= 0) {
+      add(
+        errors,
+        "CFG-AUTH-001",
+        `${path}.auth.timeoutMs`,
+        "must be a positive number",
+      );
+    }
+  }
+
+  if (requireObject(errors, source.request, `${path}.request`)) {
+    const method = source.request.method?.toUpperCase();
+    if (!HTTP_METHODS.has(method)) {
+      add(
+        errors,
+        "CFG-HTTP-001",
+        `${path}.request.method`,
+        `must be one of ${[...HTTP_METHODS].join(", ")}`,
+      );
+    }
+    requireUrl(errors, source.request.url, `${path}.request.url`);
+  }
+
+  if (requireObject(errors, source.extract, `${path}.extract`)) {
+    if (
+      !Array.isArray(source.extract.recordPath) ||
+      source.extract.recordPath.length === 0 ||
+      source.extract.recordPath.some(
+        (part) => typeof part !== "string" || part === "",
+      )
+    ) {
+      add(
+        errors,
+        "CFG-EXTRACT-001",
+        `${path}.extract.recordPath`,
+        "must be a non-empty string array",
+      );
+    }
+    if (requireObject(errors, source.extract.fields, `${path}.extract.fields`)) {
+      if (Object.keys(source.extract.fields).length === 0) {
+        add(
+          errors,
+          "CFG-EXTRACT-002",
+          `${path}.extract.fields`,
+          "must contain at least one field",
+        );
+      }
+      for (const [field, fieldPath] of Object.entries(source.extract.fields)) {
+        requireString(
+          errors,
+          fieldPath,
+          `${path}.extract.fields.${field}`,
+        );
+      }
+    }
+    requireString(
+      errors,
+      source.extract.primaryKey,
+      `${path}.extract.primaryKey`,
+    );
+    if (
+      typeof source.extract.primaryKey === "string" &&
+      source.extract.fields &&
+      !(source.extract.primaryKey in source.extract.fields)
+    ) {
+      add(
+        errors,
+        "CFG-EXTRACT-003",
+        `${path}.extract.primaryKey`,
+        "must reference a configured output field",
+      );
+    }
+  }
+}
+
 export function validateWorkflowConfig(config) {
   const errors = [];
   if (!requireObject(errors, config, "$")) return errors;
 
   requireString(errors, config.name, "name");
 
-  if (requireObject(errors, config.dataSource, "dataSource")) {
-    const source = config.dataSource;
-    for (const key of ["id", "name", "profileName", "targetUrlPattern"]) {
-      requireString(errors, source[key], `dataSource.${key}`);
-    }
-    requireUrl(errors, source.entryUrl, "dataSource.entryUrl");
-
-    if (requireObject(errors, source.auth, "dataSource.auth")) {
-      for (const key of [
-        "pageUrlPattern",
-        "stateAttribute",
-        "quickButton",
-        "fingerprintButton",
-      ]) {
-        requireString(errors, source.auth[key], `dataSource.auth.${key}`);
-      }
-      if (
-        !Number.isFinite(source.auth.timeoutMs) ||
-        source.auth.timeoutMs <= 0
-      ) {
-        add(
-          errors,
-          "CFG-AUTH-001",
-          "dataSource.auth.timeoutMs",
-          "must be a positive number",
-        );
-      }
-    }
-
-    if (requireObject(errors, source.request, "dataSource.request")) {
-      const method = source.request.method?.toUpperCase();
-      if (!HTTP_METHODS.has(method)) {
-        add(
-          errors,
-          "CFG-HTTP-001",
-          "dataSource.request.method",
-          `must be one of ${[...HTTP_METHODS].join(", ")}`,
-        );
-      }
-      requireUrl(errors, source.request.url, "dataSource.request.url");
-    }
-
-    if (requireObject(errors, source.extract, "dataSource.extract")) {
-      if (
-        !Array.isArray(source.extract.recordPath) ||
-        source.extract.recordPath.length === 0 ||
-        source.extract.recordPath.some(
-          (part) => typeof part !== "string" || part === "",
-        )
-      ) {
-        add(
-          errors,
-          "CFG-EXTRACT-001",
-          "dataSource.extract.recordPath",
-          "must be a non-empty string array",
-        );
-      }
-      if (requireObject(errors, source.extract.fields, "dataSource.extract.fields")) {
-        if (Object.keys(source.extract.fields).length === 0) {
+  const hasSingleSource = config.dataSource !== undefined;
+  const hasMultipleSources = config.dataSources !== undefined;
+  if (hasSingleSource === hasMultipleSources) {
+    add(
+      errors,
+      "CFG-SOURCE-001",
+      "dataSource",
+      "configure exactly one of dataSource or dataSources",
+    );
+  } else if (hasSingleSource) {
+    validateDataSource(errors, config.dataSource, "dataSource");
+  } else if (
+    !Array.isArray(config.dataSources) ||
+    config.dataSources.length === 0
+  ) {
+    add(
+      errors,
+      "CFG-SOURCE-002",
+      "dataSources",
+      "must be a non-empty array",
+    );
+  } else {
+    const sourceIds = new Set();
+    config.dataSources.forEach((source, index) => {
+      validateDataSource(errors, source, `dataSources[${index}]`);
+      if (typeof source?.id === "string") {
+        if (sourceIds.has(source.id)) {
           add(
             errors,
-            "CFG-EXTRACT-002",
-            "dataSource.extract.fields",
-            "must contain at least one field",
+            "CFG-SOURCE-003",
+            `dataSources[${index}].id`,
+            "must be unique",
           );
         }
-        for (const [field, path] of Object.entries(source.extract.fields)) {
-          requireString(errors, path, `dataSource.extract.fields.${field}`);
-        }
+        sourceIds.add(source.id);
       }
-      requireString(
-        errors,
-        source.extract.primaryKey,
-        "dataSource.extract.primaryKey",
-      );
-      if (
-        typeof source.extract.primaryKey === "string" &&
-        source.extract.fields &&
-        !(source.extract.primaryKey in source.extract.fields)
-      ) {
-        add(
-          errors,
-          "CFG-EXTRACT-003",
-          "dataSource.extract.primaryKey",
-          "must reference a configured output field",
-        );
-      }
-    }
+    });
   }
 
   if (requireObject(errors, config.businessReport, "businessReport")) {
@@ -240,6 +280,67 @@ export function validateWorkflowConfig(config) {
           "reliability.failureNotificationThreshold",
           "must be an integer >= 1",
         );
+      }
+    }
+  }
+
+  if (config.history !== undefined) {
+    if (requireObject(errors, config.history, "history")) {
+      for (const [key, min] of [
+        ["trendDays", 1],
+        ["retentionDays", 1],
+      ]) {
+        if (
+          config.history[key] !== undefined &&
+          (!Number.isInteger(config.history[key]) ||
+            config.history[key] < min)
+        ) {
+          add(
+            errors,
+            "CFG-HISTORY-001",
+            `history.${key}`,
+            `must be an integer >= ${min}`,
+          );
+        }
+      }
+      if (
+        Number.isInteger(config.history.trendDays) &&
+        Number.isInteger(config.history.retentionDays) &&
+        config.history.retentionDays < config.history.trendDays
+      ) {
+        add(
+          errors,
+          "CFG-HISTORY-002",
+          "history.retentionDays",
+          "must be greater than or equal to trendDays",
+        );
+      }
+      if (config.history.trendChart !== undefined) {
+        if (
+          requireObject(
+            errors,
+            config.history.trendChart,
+            "history.trendChart",
+          )
+        ) {
+          requireString(
+            errors,
+            config.history.trendChart.title,
+            "history.trendChart.title",
+          );
+          if (
+            !["serviceCount", "totalInstances", "totalAlarms"].includes(
+              config.history.trendChart.valueField,
+            )
+          ) {
+            add(
+              errors,
+              "CFG-HISTORY-003",
+              "history.trendChart.valueField",
+              "must be serviceCount, totalInstances, or totalAlarms",
+            );
+          }
+        }
       }
     }
   }

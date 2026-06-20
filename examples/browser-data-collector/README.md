@@ -177,9 +177,10 @@ cp config/daily-report.example.json runtime/local-config/daily-report.json
 
 配置分为：
 
-- `dataSource`：认证、HTTP 请求、字段提取。
+- `dataSource` 或 `dataSources[]`：认证、HTTP 请求、字段提取。
 - `businessReport`：汇总和图表。
 - `messageChannel`：IM 或其他消息通道。
+- `history`：趋势周期、保留周期和趋势指标。
 - `schedule`：每日时间。
 
 单次执行：
@@ -226,6 +227,15 @@ docs/windows-scheduled-task-guide.md
 - 连续失败次数保存在 `runtime/state/`。
 - 达到阈值后发送抽象失败通知。
 - 所有运行状态、幂等记录和预览文件均位于 Git 忽略目录。
+
+历史与多数据源：
+
+- 每次成功采集都会保存标准记录快照。
+- 默认生成近 7 天趋势 JSON 和 SVG 图表。
+- 历史快照默认保留 90 天。
+- 多数据源逐个执行并合并标准记录。
+- 单个数据源失败时报告状态为 `partial_success`。
+- 全部数据源失败时才终止报告。
 
 设计说明：
 

@@ -38,6 +38,7 @@
 | D08 | 指纹与失败通知检查 | 是 |
 | D09 | 每日调度检查 | 是 |
 | D10 | Git 和安全检查 | 是 |
+| D11 | 历史趋势和多数据源 | 是 |
 
 ## 4. D00 环境和版本确认
 
@@ -433,12 +434,73 @@ git check-ignore -v runtime/daily-reports
 - 浏览器 profile 被忽略。
 - 没有内部 URL 或消息凭据进入 Git。
 
-## 15. 脱敏反馈
+## 15. D11 历史趋势和多数据源
+
+### 历史趋势
+
+连续执行或使用模拟测试后检查：
+
+```text
+runtime/history/
+runtime/daily-reports/<run-id>/trend.json
+runtime/daily-reports/<run-id>/trend-chart.svg
+```
+
+通过条件：
+
+- `trend.json` 按日期升序。
+- 同一天多次快照只保留当天最新聚合结果。
+- 趋势指标与报告汇总一致。
+- SVG 可以在 Edge 打开。
+- 过期快照只在配置的保留期之外清理。
+
+失败分类：
+
+- `DAILY-HISTORY-001`：快照未保存。
+- `DAILY-HISTORY-002`：趋势日期或数值错误。
+- `DAILY-HISTORY-003`：趋势图无法显示。
+- `DAILY-HISTORY-004`：保留策略误删有效快照。
+
+### 多数据源
+
+将单个 `dataSource` 改为：
+
+```json
+{
+  "dataSources": [
+    {
+      "id": "source-a"
+    },
+    {
+      "id": "source-b"
+    }
+  ]
+}
+```
+
+每个元素需要包含完整数据源配置。
+
+验证：
+
+- 两个数据源都成功：状态 `success`。
+- 一个成功、一个失败：状态 `partial_success`。
+- 报告中出现抽象数据源告警。
+- `data-source-audits.json` 分开记录成功和失败。
+- 全部失败：不发送空业务报告。
+
+失败分类：
+
+- `DAILY-MULTI-001`：单个失败阻塞全部。
+- `DAILY-MULTI-002`：不同数据源记录无法区分。
+- `DAILY-MULTI-003`：部分失败未在报告中提示。
+- `DAILY-MULTI-004`：全部失败仍发送空报告。
+
+## 16. 脱敏反馈
 
 反馈：
 
 - Commit SHA。
-- D00-D10 状态。
+- D00-D11 状态。
 - 首个失败用例。
 - 认证状态。
 - HTTP 状态码。

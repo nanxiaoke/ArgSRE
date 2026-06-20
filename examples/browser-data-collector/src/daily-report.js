@@ -9,7 +9,12 @@ import {
   createIdempotencyStore,
   localDateKey,
 } from "./core/idempotency.js";
+import { createHistoryStore } from "./core/history-store.js";
 import { buildReportPackage } from "./core/report-builder.js";
+import {
+  buildDailyTrend,
+  renderTrendChart,
+} from "./core/trend-builder.js";
 import { createWorkflowStateStore } from "./core/workflow-state.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,6 +52,7 @@ export async function runDailyReport({
     );
   const idempotencyStore = await createIdempotencyStore(runtimeRoot);
   const workflowStateStore = await createWorkflowStateStore(runtimeRoot);
+  const historyStore = await createHistoryStore(runtimeRoot);
   const idempotencyKey = `${config.name}:${localDateKey()}:daily-report`;
   const audit = {
     runId,
@@ -58,28 +64,126 @@ export async function runDailyReport({
   };
 
   try {
-    const dataResult = await runDataSource({
-      config: config.dataSource,
-      runtimeRoot,
-      simulateFingerprint,
-      onAuthRequired: async (event) => {
-        audit.authRequiredEvent = event;
-        audit.authNotificationResult = await sender.send(
-          {
-            type: "authentication_required",
-            title: `${event.sourceName} 需要人工认证`,
-            generatedAt: event.detectedAt,
-            markdown:
-              "定时采集检测到认证长期超时，请在运行采集任务的机器上完成指纹认证后重新执行。",
+    const sourceConfigs = config.dataSources ?? [config.dataSource];
+    const dataResults = [];
+    const sourceFailures = [];
+    const authNotifications = [];
+
+    for (const sourceConfig of sourceConfigs) {
+      try {
+        const dataResult = await runDataSource({
+          config: sourceConfig,
+          runtimeRoot,
+          simulateFingerprint,
+          onAuthRequired: async (event) => {
+            const notificationResult = await sender.send(
+              {
+                type: "authentication_required",
+                title: `${event.sourceName} 需要人工认证`,
+                generatedAt: event.detectedAt,
+                summary: { sourceId: event.sourceId },
+                markdown:
+                  "定时采集检测到认证长期超时，请在运行采集任务的机器上完成指纹认证后重新执行。",
+              },
+              { fileName: `authentication-required-${event.sourceId}` },
+            );
+            authNotifications.push({ event, notificationResult });
           },
-          { fileName: "authentication-required" },
-        );
-      },
-      retryConfig: config.reliability?.dataRequest,
+          retryConfig: config.reliability?.dataRequest,
+        });
+        dataResults.push(dataResult);
+        await historyStore.append({
+          sourceId: dataResult.sourceId,
+          records: dataResult.records,
+        });
+        await historyStore.prune({
+          sourceId: dataResult.sourceId,
+          retentionDays: config.history?.retentionDays ?? 90,
+        });
+      } catch (error) {
+        sourceFailures.push({
+          sourceId: sourceConfig.id,
+          sourceName: sourceConfig.name,
+          status:
+            error.message === "FINGERPRINT_AUTH_REQUIRED"
+              ? "authentication_required"
+              : "failed",
+          errorCode:
+            error.message === "FINGERPRINT_AUTH_REQUIRED"
+              ? "FINGERPRINT_AUTH_REQUIRED"
+              : error.name,
+          audit: error.dataSourceAudit,
+        });
+      }
+    }
+
+    audit.authNotifications = authNotifications;
+    audit.sourceFailures = sourceFailures.map(
+      ({ sourceId, sourceName, status, errorCode }) => ({
+        sourceId,
+        sourceName,
+        status,
+        errorCode,
+      }),
+    );
+
+    if (dataResults.length === 0) {
+      const allAuthRequired = sourceFailures.every(
+        (failure) => failure.status === "authentication_required",
+      );
+      const allFailedError = new Error(
+        allAuthRequired
+          ? "ALL_DATA_SOURCES_AUTH_REQUIRED"
+          : "ALL_DATA_SOURCES_FAILED",
+      );
+      allFailedError.name = allAuthRequired
+        ? "AllDataSourcesAuthRequiredError"
+        : "AllDataSourcesFailedError";
+      allFailedError.sourceFailures = sourceFailures;
+      throw allFailedError;
+    }
+
+    const combinedRecords = dataResults.flatMap((result) =>
+      result.records.map((record) => ({
+        ...record,
+        _sourceId: result.sourceId,
+      })),
+    );
+    const combinedSourceId = `workflow:${config.name}`;
+    const historyResult = await historyStore.append({
+      sourceId: combinedSourceId,
+      records: combinedRecords,
+    });
+    const trendDays = config.history?.trendDays ?? 7;
+    const snapshots = await historyStore.list({
+      sourceId: combinedSourceId,
+      days: trendDays,
+    });
+    const trendSeries = buildDailyTrend(snapshots);
+    const trendConfig = config.history?.trendChart ?? {
+      title: `${trendDays} 天告警趋势`,
+      valueField: "totalAlarms",
+    };
+    const trendChartSvg = renderTrendChart(trendSeries, trendConfig);
+    const removedHistoryFiles = await historyStore.prune({
+      sourceId: combinedSourceId,
+      retentionDays: config.history?.retentionDays ?? 90,
     });
     const reportPackage = buildReportPackage(
-      dataResult.records,
+      combinedRecords,
       config.businessReport,
+      {
+        trend: {
+          title: trendConfig.title,
+          valueField: trendConfig.valueField,
+          series: trendSeries,
+          chartSvg: trendChartSvg,
+        },
+        warnings: sourceFailures.map(
+          (failure) =>
+            `${failure.sourceName}: ${failure.status} (${failure.errorCode})`,
+        ),
+      },
     );
     const priorSend = dryRun
       ? undefined
@@ -110,13 +214,20 @@ export async function runDailyReport({
 
     await Promise.all([
       writeFile(
-        join(runPath, "data-source-audit.json"),
-        `${JSON.stringify(dataResult.audit, null, 2)}\n`,
+        join(runPath, "data-source-audits.json"),
+        `${JSON.stringify(
+          {
+            successes: dataResults.map((result) => result.audit),
+            failures: sourceFailures,
+          },
+          null,
+          2,
+        )}\n`,
         "utf8",
       ),
       writeFile(
         join(runPath, "records.json"),
-        `${JSON.stringify(dataResult.records, null, 2)}\n`,
+        `${JSON.stringify(combinedRecords, null, 2)}\n`,
         "utf8",
       ),
       writeFile(
@@ -126,12 +237,25 @@ export async function runDailyReport({
       ),
       writeFile(join(runPath, "report.md"), reportPackage.markdown, "utf8"),
       writeFile(join(runPath, "chart.svg"), reportPackage.chartSvg, "utf8"),
+      writeFile(join(runPath, "trend-chart.svg"), trendChartSvg, "utf8"),
+      writeFile(
+        join(runPath, "trend.json"),
+        `${JSON.stringify(trendSeries, null, 2)}\n`,
+        "utf8",
+      ),
     ]);
 
     audit.status = "success";
+    if (sourceFailures.length > 0) audit.status = "partial_success";
     audit.completedAt = new Date().toISOString();
-    audit.sourceId = dataResult.sourceId;
-    audit.recordCount = dataResult.records.length;
+    audit.sourceIds = dataResults.map((result) => result.sourceId);
+    audit.recordCount = combinedRecords.length;
+    audit.history = {
+      snapshotPath: historyResult.path,
+      trendDays,
+      trendPointCount: trendSeries.length,
+      removedFiles: removedHistoryFiles,
+    };
     audit.messageResult = messageResult;
     audit.workflowState = await workflowStateStore.markSuccess(
       config.name,
@@ -145,23 +269,28 @@ export async function runDailyReport({
     return {
       runPath,
       audit,
-      dataResult,
+      dataResult: dataResults[0],
+      dataResults,
       reportPackage,
       messageResult,
     };
   } catch (error) {
+    const authenticationBlocked = [
+      "FINGERPRINT_AUTH_REQUIRED",
+      "ALL_DATA_SOURCES_AUTH_REQUIRED",
+    ].includes(error.message);
     audit.status =
-      error.message === "FINGERPRINT_AUTH_REQUIRED"
+      authenticationBlocked
         ? "authentication_required"
         : "failed";
     audit.completedAt = new Date().toISOString();
     audit.error = { name: error.name, message: error.message };
     const errorCode =
-      error.message === "FINGERPRINT_AUTH_REQUIRED"
-        ? "FINGERPRINT_AUTH_REQUIRED"
+      authenticationBlocked
+        ? error.message
         : error.name;
     audit.workflowState =
-      error.message === "FINGERPRINT_AUTH_REQUIRED"
+      authenticationBlocked
         ? await workflowStateStore.markBlocked(config.name, runId, errorCode)
         : await workflowStateStore.markFailure(
             config.name,
@@ -171,7 +300,7 @@ export async function runDailyReport({
     const threshold =
       config.reliability?.failureNotificationThreshold ?? 1;
     if (
-      error.message !== "FINGERPRINT_AUTH_REQUIRED" &&
+      !authenticationBlocked &&
       audit.workflowState.consecutiveFailures >= threshold
     ) {
       try {
@@ -202,6 +331,20 @@ export async function runDailyReport({
       await writeFile(
         join(runPath, "data-source-audit.json"),
         `${JSON.stringify(error.dataSourceAudit, null, 2)}\n`,
+        "utf8",
+      );
+    }
+    if (error.sourceFailures) {
+      await writeFile(
+        join(runPath, "data-source-audits.json"),
+        `${JSON.stringify(
+          {
+            successes: [],
+            failures: error.sourceFailures,
+          },
+          null,
+          2,
+        )}\n`,
         "utf8",
       );
     }

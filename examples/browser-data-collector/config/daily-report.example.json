@@ -73,6 +73,14 @@
     "idempotencyHours": 36,
     "failureNotificationThreshold": 1
   },
+  "history": {
+    "trendDays": 7,
+    "retentionDays": 90,
+    "trendChart": {
+      "title": "近 7 天告警趋势",
+      "valueField": "totalAlarms"
+    }
+  },
   "schedule": {
     "time": "09:00"
   }

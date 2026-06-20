@@ -161,6 +161,56 @@ src/core/workflow-state.js
 - 达到阈值后发送失败通知。
 - 指纹等待记录为 `blocked`，不计入连续技术失败。
 
+### 2.8 历史与趋势层
+
+位置：
+
+```text
+src/core/history-store.js
+src/core/trend-builder.js
+```
+
+职责：
+
+- 保存标准记录快照。
+- 按天聚合服务数、实例数和告警数。
+- 生成 7/30 天趋势数据。
+- 生成 SVG 趋势图。
+- 按保留周期逐文件清理过期快照。
+
+历史层不保存浏览器会话或原始响应。
+
+### 2.9 多数据源编排
+
+工作流支持：
+
+```json
+{
+  "dataSource": {}
+}
+```
+
+或：
+
+```json
+{
+  "dataSources": [
+    {},
+    {}
+  ]
+}
+```
+
+约束：
+
+- 两种配置只能选择一种。
+- 数据源 ID 必须唯一。
+- 数据源顺序执行并独立审计。
+- 单个失败不阻塞其他数据源。
+- 至少一个成功时生成部分成功报告。
+- 全部失败时工作流失败。
+- 全部等待认证时工作流阻塞。
+
 ## 3. 配置分区
 
 配置文件分为四个独立部分：
@@ -200,6 +250,14 @@ src/core/workflow-state.js
 - 幂等有效时间。
 - 连续失败通知阈值。
 
+### history
+
+定义：
+
+- 趋势统计天数。
+- 历史保留天数。
+- 趋势图指标和标题。
+
 ## 4. 运行产物
 
 每次运行写入：
@@ -215,6 +273,8 @@ runtime/daily-reports/<run-id>/
 - `report.json`
 - `report.md`
 - `chart.svg`
+- `trend.json`
+- `trend-chart.svg`
 - `workflow-audit.json`
 
 认证阻塞或失败任务：
@@ -227,6 +287,7 @@ runtime/daily-reports/<run-id>/
 ```text
 runtime/idempotency/
 runtime/state/
+runtime/history/
 ```
 
 Dry-run 会额外生成：
@@ -247,6 +308,7 @@ message-preview.json
 - 需要指纹认证时无法无人值守完成。
 - 暂未实现多实例分布式锁和跨机器幂等。
 - 暂未实现历史趋势数据库。
+- 历史 MVP 使用文件快照，后续可以迁移到 SQLite 或平台数据库。
 
 ## 6. 后续演进
 
