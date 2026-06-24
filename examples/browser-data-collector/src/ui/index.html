@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ArgSRE 数据采集控制台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="shell-sidebar">
+      <div class="brand">
+        <span class="brand-mark">A</span>
+        <div>
+          <strong>ArgSRE</strong>
+          <small>数据采集控制台</small>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="designer">数据源配置</button>
+        <button class="nav-item" data-view="probe">页面探测</button>
+        <button class="nav-item" data-view="runs">执行结果</button>
+      </nav>
+      <div class="runtime-box">
+        <span>运行模式</span>
+        <strong>本机只进不出</strong>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <h1>ArgSRE 数据采集控制台</h1>
+          <p id="healthText">连接本机采集服务中...</p>
+        </div>
+        <div class="top-actions">
+          <button id="refreshBtn" class="ghost">刷新</button>
+          <button id="saveBtn">保存配置</button>
+        </div>
+      </header>
+
+      <section id="designer" class="view active">
+        <div class="grid">
+          <section class="panel form-panel">
+            <div class="panel-header">
+              <h2>配置表单</h2>
+              <select id="configSelect"></select>
+            </div>
+            <label>
+              配置文件
+              <input id="configName" value="daily-report.local.json" />
+            </label>
+            <div class="two-col">
+              <label>
+                工作流名称
+                <input id="workflowName" />
+              </label>
+              <label>
+                执行时间
+                <input id="scheduleTime" placeholder="09:00" />
+              </label>
+            </div>
+            <div class="two-col">
+              <label>
+                数据源 ID
+                <input id="sourceId" />
+              </label>
+              <label>
+                数据源名称
+                <input id="sourceName" />
+              </label>
+            </div>
+            <label>
+              入口 URL
+              <input id="entryUrl" />
+            </label>
+            <div class="two-col">
+              <label>
+                目标 URL 特征
+                <input id="targetUrlPattern" />
+              </label>
+              <label>
+                浏览器 Profile
+                <input id="profileName" />
+              </label>
+            </div>
+            <div class="two-col">
+              <label>
+                快速认证按钮
+                <input id="quickButton" />
+              </label>
+              <label>
+                指纹认证按钮
+                <input id="fingerprintButton" />
+              </label>
+            </div>
+            <label>
+              请求 URL
+              <input id="requestUrl" />
+            </label>
+            <div class="two-col">
+              <label>
+                请求方法
+                <select id="requestMethod">
+                  <option>GET</option>
+                  <option>POST</option>
+                  <option>PUT</option>
+                  <option>PATCH</option>
+                  <option>DELETE</option>
+                </select>
+              </label>
+              <label>
+                数据路径
+                <input id="recordPath" placeholder="data.records" />
+              </label>
+            </div>
+            <label>
+              字段映射
+              <textarea id="fieldsText" rows="6"></textarea>
+            </label>
+            <label>
+              请求体 JSON
+              <textarea id="bodyText" rows="7"></textarea>
+            </label>
+            <label>
+              质量规则 JSON
+              <textarea id="qualityText" rows="7"></textarea>
+            </label>
+            <div class="button-row">
+              <button id="validateBtn" class="ghost">校验</button>
+              <button id="dryRunBtn">本机试跑</button>
+            </div>
+          </section>
+
+          <section class="panel editor-panel">
+            <div class="panel-header">
+              <h2>JSON 预览</h2>
+              <button id="applyJsonBtn" class="ghost">从 JSON 回填</button>
+            </div>
+            <textarea id="jsonEditor" spellcheck="false"></textarea>
+          </section>
+        </div>
+      </section>
+
+      <section id="probe" class="view">
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>页面探测</h2>
+              <span class="badge">打开真实浏览器</span>
+            </div>
+            <label>
+              入口 URL
+              <input id="probeUrl" />
+            </label>
+            <div class="two-col">
+              <label>
+                Profile
+                <input id="probeProfile" value="probe" />
+              </label>
+              <label>
+                探测秒数
+                <input id="probeDuration" type="number" min="10" value="90" />
+              </label>
+            </div>
+            <label>
+              包含 URL 特征
+              <input id="probeIncludes" placeholder="/api/query,/graphql" />
+            </label>
+            <label>
+              排除 URL 特征
+              <input id="probeExcludes" value="google-analytics,googletagmanager" />
+            </label>
+            <button id="probeBtn">开始探测</button>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>最近探测</h2>
+              <button id="loadProbesBtn" class="ghost">读取</button>
+            </div>
+            <div id="probeSummary" class="result-box"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="runs" class="view">
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>最近执行</h2>
+              <button id="loadRunsBtn" class="ghost">读取</button>
+            </div>
+            <div id="runSummary" class="result-box"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>报告预览</h2>
+              <button id="loadReportBtn" class="ghost">读取最新报告</button>
+            </div>
+            <pre id="reportPreview"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section class="console">
+        <div class="panel-header">
+          <h2>操作日志</h2>
+          <button id="clearLogBtn" class="ghost">清空</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

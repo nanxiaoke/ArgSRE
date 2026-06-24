@@ -13,6 +13,7 @@
     "daily:once": "node src/daily-report.js",
     "daily:schedule": "node src/daily-scheduler.js",
     "daily:validate": "node src/validate-config.js",
+    "ui": "node src/ui-server.js",
     "task:preview": "powershell -ExecutionPolicy Bypass -File scripts/manage-daily-task.ps1 -Action Preview",
     "doctor": "node src/doctor.js",
     "probe": "node src/probe.js",
@@ -26,7 +27,8 @@
     "test:history": "node src/run-history-demo.js",
     "test:manual": "node src/run-manual-file-demo.js",
     "test:probe": "node src/run-probe-demo.js",
-    "test": "npm run test:config && npm run test:catalog && npm run test:quality && npm run test:collector && npm run test:probe && npm run test:manual && npm run test:history && npm run test:daily"
+    "test:ui": "node src/run-ui-smoke-test.js",
+    "test": "npm run test:config && npm run test:catalog && npm run test:quality && npm run test:collector && npm run test:probe && npm run test:manual && npm run test:history && npm run test:daily && npm run test:ui"
   },
   "dependencies": {
     "playwright-core": "^1.57.0"
