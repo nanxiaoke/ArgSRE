@@ -42,7 +42,7 @@
         <div class="grid">
           <section class="panel form-panel">
             <div class="panel-header">
-              <h2>配置表单</h2>
+              <h2>数据源配置</h2>
               <select id="configSelect"></select>
             </div>
             <label>
@@ -127,8 +127,10 @@
             </label>
             <div class="button-row">
               <button id="validateBtn" class="ghost">校验</button>
-              <button id="dryRunBtn">本机试跑</button>
+              <button id="replayBtn" class="ghost">重放验证</button>
+              <button id="dryRunBtn">生成报告</button>
             </div>
+            <div id="replayResult" class="result-box compact"></div>
           </section>
 
           <section class="panel editor-panel">
@@ -146,7 +148,7 @@
           <section class="panel">
             <div class="panel-header">
               <h2>页面探测</h2>
-              <span class="badge">打开真实浏览器</span>
+              <span id="probeStatus" class="badge muted">未开始</span>
             </div>
             <label>
               入口 URL
@@ -158,8 +160,8 @@
                 <input id="probeProfile" value="probe" />
               </label>
               <label>
-                探测秒数
-                <input id="probeDuration" type="number" min="10" value="90" />
+                自动结束秒数
+                <input id="probeDuration" type="number" min="10" value="3600" />
               </label>
             </div>
             <label>
@@ -170,14 +172,54 @@
               排除 URL 特征
               <input id="probeExcludes" value="google-analytics,googletagmanager" />
             </label>
-            <button id="probeBtn">开始探测</button>
+            <div class="button-row">
+              <button id="probeBtn">开始探测</button>
+              <button id="stopProbeBtn" class="ghost" disabled>结束探测</button>
+              <button id="loadProbesBtn" class="ghost">读取最近</button>
+            </div>
           </section>
+
           <section class="panel">
             <div class="panel-header">
-              <h2>最近探测</h2>
-              <button id="loadProbesBtn" class="ghost">读取</button>
+              <h2>候选请求</h2>
+              <button id="applyCandidateBtn" class="ghost" disabled>应用到配置</button>
             </div>
-            <div id="probeSummary" class="result-box"></div>
+            <div id="candidateList" class="candidate-list"></div>
+          </section>
+
+          <section class="panel full-span">
+            <div class="panel-header">
+              <h2>候选详情与字段提取</h2>
+              <button id="useRecordPathBtn" class="ghost" disabled>使用选中数据路径</button>
+            </div>
+            <div class="detail-grid">
+              <pre id="candidateDetail"></pre>
+              <div>
+                <label>
+                  推荐数据路径
+                  <select id="recordPathSelect"></select>
+                </label>
+                <label>
+                  响应字段路径
+                  <select id="fieldPathSelect"></select>
+                </label>
+                <div class="two-col">
+                  <label>
+                    输出字段名
+                    <input id="outputFieldName" placeholder="serviceName" />
+                  </label>
+                  <label>
+                    主键字段
+                    <input id="primaryKeyField" placeholder="serviceId" />
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button id="addFieldBtn" class="ghost" disabled>加入字段映射</button>
+                  <button id="clearFieldsBtn" class="ghost">清空字段映射</button>
+                </div>
+                <pre id="responsePaths"></pre>
+              </div>
+            </div>
           </section>
         </div>
       </section>

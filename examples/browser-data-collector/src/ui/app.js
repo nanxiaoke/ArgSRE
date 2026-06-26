@@ -1,7 +1,11 @@
 const $ = (selector) => document.querySelector(selector);
 const state = {
   latestRunId: undefined,
+  currentProbeSessionId: undefined,
+  selectedCandidate: undefined,
+  selectedCandidateMeta: undefined,
   config: defaultWorkflow(),
+  pollTimer: undefined,
 };
 
 function defaultWorkflow() {
@@ -24,13 +28,8 @@ function defaultWorkflow() {
       request: {
         method: "POST",
         url: "https://replace-with-internal-target.example/api/query",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: {
-          region: "example-region",
-          timeRange: "last_24_hours",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: { region: "example-region", timeRange: "last_24_hours" },
       },
       extract: {
         recordPath: ["data", "records"],
@@ -50,10 +49,7 @@ function defaultWorkflow() {
         minRecords: 1,
         requiredFields: ["serviceId", "serviceName", "status", "updatedAt"],
         uniqueFields: ["serviceId"],
-        freshness: {
-          field: "updatedAt",
-          maxAgeMinutes: 1440,
-        },
+        freshness: { field: "updatedAt", maxAgeMinutes: 1440 },
         numericRanges: {
           instanceCount: { min: 0 },
           alarmCount: { min: 0 },
@@ -68,9 +64,7 @@ function defaultWorkflow() {
         title: "各服务告警数量",
       },
     },
-    messageChannel: {
-      type: "local-file",
-    },
+    messageChannel: { type: "local-file" },
     reliability: {
       dataRequest: {
         maxAttempts: 3,
@@ -90,14 +84,9 @@ function defaultWorkflow() {
     history: {
       trendDays: 7,
       retentionDays: 90,
-      trendChart: {
-        title: "近 7 天告警趋势",
-        valueField: "totalAlarms",
-      },
+      trendChart: { title: "近 7 天告警趋势", valueField: "totalAlarms" },
     },
-    schedule: {
-      time: "09:00",
-    },
+    schedule: { time: "09:00" },
   };
 }
 
@@ -126,8 +115,16 @@ async function api(path, options = {}) {
 }
 
 function source() {
-  state.config.dataSource ??= defaultWorkflow().dataSource;
+  state.config.dataSource ??= structuredClone(defaultWorkflow().dataSource);
   return state.config.dataSource;
+}
+
+function parseJsonField(selector, label) {
+  try {
+    return JSON.parse($(selector).value || "{}");
+  } catch (error) {
+    throw new Error(`${label} 不是合法 JSON: ${error.message}`);
+  }
 }
 
 function fillForm(config) {
@@ -148,6 +145,7 @@ function fillForm(config) {
   $("#fieldsText").value = JSON.stringify(dataSource.extract?.fields ?? {}, null, 2);
   $("#bodyText").value = JSON.stringify(dataSource.request?.body ?? {}, null, 2);
   $("#qualityText").value = JSON.stringify(dataSource.quality ?? {}, null, 2);
+  $("#primaryKeyField").value = dataSource.extract?.primaryKey ?? "";
   $("#probeUrl").value = dataSource.entryUrl ?? "";
   $("#probeProfile").value = dataSource.profileName ?? "probe";
   renderJson();
@@ -155,7 +153,7 @@ function fillForm(config) {
 
 function readForm() {
   const config = structuredClone(state.config);
-  const dataSource = config.dataSource ?? defaultWorkflow().dataSource;
+  const dataSource = config.dataSource ?? structuredClone(defaultWorkflow().dataSource);
   config.name = $("#workflowName").value.trim();
   config.schedule = { ...(config.schedule ?? {}), time: $("#scheduleTime").value.trim() };
   dataSource.id = $("#sourceId").value.trim();
@@ -185,9 +183,11 @@ function readForm() {
       .map((part) => part.trim())
       .filter(Boolean),
     fields: parseJsonField("#fieldsText", "字段映射"),
+    primaryKey: $("#primaryKeyField").value.trim(),
   };
-  dataSource.extract.primaryKey =
-    dataSource.extract.primaryKey ?? Object.keys(dataSource.extract.fields)[0] ?? "";
+  if (!dataSource.extract.primaryKey) {
+    dataSource.extract.primaryKey = Object.keys(dataSource.extract.fields)[0] ?? "";
+  }
   dataSource.quality = parseJsonField("#qualityText", "质量规则 JSON");
   config.dataSource = dataSource;
   state.config = config;
@@ -195,16 +195,112 @@ function readForm() {
   return config;
 }
 
-function parseJsonField(selector, label) {
-  try {
-    return JSON.parse($(selector).value || "{}");
-  } catch (error) {
-    throw new Error(`${label} 不是合法 JSON: ${error.message}`);
+function renderJson() {
+  $("#jsonEditor").value = JSON.stringify(state.config, null, 2);
+}
+
+function responsePathToFieldPath(path) {
+  const recordPath = $("#recordPath").value.trim();
+  let value = path.replace(/^\$\./, "").replace(/^\$/, "").replaceAll("[]", "");
+  if (recordPath && value.startsWith(`${recordPath}.`)) {
+    value = value.slice(recordPath.length + 1);
+  }
+  return value;
+}
+
+function setProbeStatus(text, running = false) {
+  $("#probeStatus").textContent = text;
+  $("#stopProbeBtn").disabled = !running;
+  $("#probeBtn").disabled = running;
+}
+
+function renderCandidates(summary) {
+  const list = $("#candidateList");
+  list.innerHTML = "";
+  const candidates = summary?.candidates ?? [];
+  if (candidates.length === 0) {
+    list.textContent = "暂无候选请求";
+    return;
+  }
+  for (const candidate of candidates) {
+    const button = document.createElement("button");
+    button.className = "candidate-item";
+    button.dataset.candidateId = candidate.id;
+    button.innerHTML = `<strong>${candidate.id} score=${candidate.score} ${candidate.method} ${candidate.status}</strong><span>${candidate.url}</span>`;
+    button.addEventListener("click", () => selectCandidate(summary.sessionId, candidate.id, button));
+    list.appendChild(button);
   }
 }
 
-function renderJson() {
-  $("#jsonEditor").value = JSON.stringify(state.config, null, 2);
+function renderCandidateDetail(result) {
+  state.selectedCandidate = result.candidate;
+  state.selectedCandidateMeta = result;
+  $("#candidateDetail").textContent = JSON.stringify(result.candidate, null, 2);
+  $("#responsePaths").textContent = result.responsePaths
+    .map((item) => `${item.path}: ${item.type}${item.length !== undefined ? `(${item.length})` : ""}`)
+    .join("\n");
+
+  const recordSelect = $("#recordPathSelect");
+  recordSelect.innerHTML = "";
+  for (const item of result.suggestedRecordPaths) {
+    const option = document.createElement("option");
+    option.value = item.recordPath.join(".");
+    option.textContent = `${item.path} (${item.length})`;
+    recordSelect.appendChild(option);
+  }
+
+  const fieldSelect = $("#fieldPathSelect");
+  fieldSelect.innerHTML = "";
+  for (const item of result.responsePaths.filter((path) => !["array", "object"].includes(path.type))) {
+    const option = document.createElement("option");
+    option.value = item.path;
+    option.textContent = `${item.path}: ${item.type}`;
+    fieldSelect.appendChild(option);
+  }
+
+  $("#applyCandidateBtn").disabled = false;
+  $("#useRecordPathBtn").disabled = recordSelect.options.length === 0;
+  $("#addFieldBtn").disabled = fieldSelect.options.length === 0;
+}
+
+async function selectCandidate(sessionId, candidateId, button) {
+  document.querySelectorAll(".candidate-item").forEach((item) => item.classList.remove("active"));
+  button?.classList.add("active");
+  const result = await api(
+    `/api/probe/${encodeURIComponent(sessionId)}/candidates/${encodeURIComponent(candidateId)}`,
+  );
+  renderCandidateDetail(result);
+  log(`已选择候选请求 ${candidateId}`);
+}
+
+function applyCandidateToConfig() {
+  if (!state.selectedCandidateMeta) return;
+  const request = state.selectedCandidateMeta.request;
+  $("#requestMethod").value = request.method;
+  $("#requestUrl").value = request.url;
+  $("#bodyText").value = JSON.stringify(request.body ?? {}, null, 2);
+  if ($("#recordPathSelect").value) $("#recordPath").value = $("#recordPathSelect").value;
+  readForm();
+  log("候选请求已应用到数据源配置");
+}
+
+function useSelectedRecordPath() {
+  if (!$("#recordPathSelect").value) return;
+  $("#recordPath").value = $("#recordPathSelect").value;
+  readForm();
+  log(`已设置数据路径 ${$("#recordPath").value}`);
+}
+
+function addSelectedField() {
+  const rawPath = $("#fieldPathSelect").value;
+  if (!rawPath) return;
+  const outputField = $("#outputFieldName").value.trim() || rawPath.split(".").at(-1);
+  const fields = parseJsonField("#fieldsText", "字段映射");
+  fields[outputField] = responsePathToFieldPath(rawPath);
+  $("#fieldsText").value = JSON.stringify(fields, null, 2);
+  if (!$("#primaryKeyField").value.trim()) $("#primaryKeyField").value = outputField;
+  readForm();
+  log(`已加入字段映射 ${outputField}`);
 }
 
 async function refreshConfigs() {
@@ -250,22 +346,29 @@ async function validateConfig() {
     method: "POST",
     body: JSON.stringify({ content: config }),
   });
-  if (result.ok) {
-    log("配置校验通过");
-  } else {
-    log("配置校验未通过", result.validationErrors);
-  }
+  log(result.ok ? "配置校验通过" : "配置校验未通过", result.validationErrors);
+}
+
+async function replaySource() {
+  const config = readForm();
+  $("#replayResult").textContent = "重放验证中...";
+  const result = await api("/api/replay-source", {
+    method: "POST",
+    body: JSON.stringify({ content: config, headless: false }),
+  });
+  $("#replayResult").textContent = JSON.stringify(result, null, 2);
+  log(`重放验证完成，记录数 ${result.recordCount}`, result.audit);
 }
 
 async function runDryRun() {
   const config = readForm();
-  log("开始本机试跑");
+  log("开始生成本机报告");
   const result = await api("/api/run", {
     method: "POST",
     body: JSON.stringify({ content: config, dryRun: true }),
   });
   state.latestRunId = result.audit.runId;
-  log("本机试跑完成", result.audit);
+  log("本机报告生成完成", result.audit);
   await loadRuns();
 }
 
@@ -281,26 +384,63 @@ async function startProbe() {
     name: "ui-data-source-probe",
     entryUrl: $("#probeUrl").value.trim(),
     profileName: $("#probeProfile").value.trim(),
-    durationSeconds: Number($("#probeDuration").value || 90),
+    durationSeconds: Number($("#probeDuration").value || 3600),
     capture: {
       includeUrlPatterns: csvList($("#probeIncludes").value),
       excludeUrlPatterns: csvList($("#probeExcludes").value),
       maxResponseBytes: 1048576,
     },
   };
-  log("开始页面探测，请在弹出的浏览器中完成认证和页面操作", config);
-  const result = await api("/api/probe", {
+  log("开始页面探测，请在弹出的浏览器中完成认证、进入子页面并触发目标请求", config);
+  const result = await api("/api/probe/start", {
     method: "POST",
     body: JSON.stringify({ config }),
   });
-  log("页面探测完成", result.summary);
-  await loadProbes();
+  state.currentProbeSessionId = result.session.sessionId;
+  setProbeStatus("运行中", true);
+  startProbePolling();
+}
+
+async function stopProbe() {
+  if (!state.currentProbeSessionId) return;
+  await api(`/api/probe/${encodeURIComponent(state.currentProbeSessionId)}/stop`, {
+    method: "POST",
+    body: "{}",
+  });
+  log("已请求结束探测");
+  setProbeStatus("结束中", true);
+}
+
+function startProbePolling() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(() => {
+    refreshCurrentProbe().catch((error) => log("探测状态刷新失败", { message: error.message }));
+  }, 1500);
+}
+
+async function refreshCurrentProbe() {
+  if (!state.currentProbeSessionId) return;
+  const result = await api(`/api/probe/${encodeURIComponent(state.currentProbeSessionId)}`);
+  const session = result.session;
+  if (session.summary) renderCandidates(session.summary);
+  if (["completed", "failed"].includes(session.status)) {
+    clearInterval(state.pollTimer);
+    setProbeStatus(session.status === "completed" ? "已完成" : "失败", false);
+    log("探测已结束", session.summary ?? session.error);
+  } else {
+    setProbeStatus(session.status, true);
+  }
 }
 
 async function loadProbes() {
   const result = await api("/api/probes");
-  $("#probeSummary").textContent = JSON.stringify(result.latest ?? result, null, 2);
-  log("已读取最近探测");
+  const latest = result.latest?.content;
+  if (latest) {
+    state.currentProbeSessionId = latest.sessionId;
+    renderCandidates(latest);
+    setProbeStatus("已读取最近", false);
+  }
+  log("已读取最近探测", result.latest ?? result);
 }
 
 async function loadRuns() {
@@ -336,7 +476,11 @@ function bindEvents() {
   $("#refreshBtn").addEventListener("click", refreshAll);
   $("#saveBtn").addEventListener("click", () => saveConfig().catch((error) => log(error.message)));
   $("#validateBtn").addEventListener("click", () => validateConfig().catch((error) => log(error.message)));
-  $("#dryRunBtn").addEventListener("click", () => runDryRun().catch((error) => log("本机试跑失败", { message: error.message })));
+  $("#replayBtn").addEventListener("click", () => replaySource().catch((error) => {
+    $("#replayResult").textContent = error.message;
+    log("重放验证失败", { message: error.message });
+  }));
+  $("#dryRunBtn").addEventListener("click", () => runDryRun().catch((error) => log("报告生成失败", { message: error.message })));
   $("#applyJsonBtn").addEventListener("click", () => {
     try {
       fillForm(JSON.parse($("#jsonEditor").value));
@@ -347,7 +491,16 @@ function bindEvents() {
   });
   $("#configSelect").addEventListener("change", (event) => loadConfig(event.target.value).catch((error) => log(error.message)));
   $("#probeBtn").addEventListener("click", () => startProbe().catch((error) => log("页面探测失败", { message: error.message })));
+  $("#stopProbeBtn").addEventListener("click", () => stopProbe().catch((error) => log("结束探测失败", { message: error.message })));
   $("#loadProbesBtn").addEventListener("click", () => loadProbes().catch((error) => log(error.message)));
+  $("#applyCandidateBtn").addEventListener("click", applyCandidateToConfig);
+  $("#useRecordPathBtn").addEventListener("click", useSelectedRecordPath);
+  $("#addFieldBtn").addEventListener("click", addSelectedField);
+  $("#clearFieldsBtn").addEventListener("click", () => {
+    $("#fieldsText").value = "{}";
+    readForm();
+    log("字段映射已清空");
+  });
   $("#loadRunsBtn").addEventListener("click", () => loadRuns().catch((error) => log(error.message)));
   $("#loadReportBtn").addEventListener("click", () => loadReport().catch((error) => log(error.message)));
   $("#clearLogBtn").addEventListener("click", () => {

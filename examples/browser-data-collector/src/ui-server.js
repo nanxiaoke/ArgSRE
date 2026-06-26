@@ -19,6 +19,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { probePage } from "./probe.js";
 import { runDailyReport } from "./daily-report.js";
+import { runConfiguredDataSource } from "./core/data-source-dispatcher.js";
 import { resolveWorkflowConfig } from "./core/workflow-config-loader.js";
 import { validateWorkflowConfig } from "./core/config-validator.js";
 
@@ -34,6 +35,7 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
 };
+const probeSessions = new Map();
 
 function isInside(parent, child) {
   const diff = relative(resolve(parent), resolve(child));
@@ -117,6 +119,86 @@ async function latestJson(path, fileName) {
     }
   }
   return undefined;
+}
+
+function createStopController() {
+  let stop;
+  const signal = new Promise((resolveStop) => {
+    stop = resolveStop;
+  });
+  return { signal, stop };
+}
+
+function summarizeProbeSession(session) {
+  return {
+    sessionId: session.sessionId,
+    status: session.status,
+    startedAt: session.startedAt,
+    completedAt: session.completedAt,
+    sessionPath: session.sessionPath,
+    error: session.error,
+    summary: session.summary,
+  };
+}
+
+function describeJsonPaths(value, path = "$", output = [], depth = 0) {
+  if (depth > 8) {
+    output.push({ path, type: "max-depth" });
+    return output;
+  }
+  if (Array.isArray(value)) {
+    output.push({ path, type: "array", length: value.length });
+    if (value.length > 0) describeJsonPaths(value[0], `${path}[]`, output, depth + 1);
+    return output;
+  }
+  if (value && typeof value === "object") {
+    output.push({ path, type: "object" });
+    for (const [key, child] of Object.entries(value)) {
+      describeJsonPaths(child, `${path}.${key}`, output, depth + 1);
+    }
+    return output;
+  }
+  output.push({
+    path,
+    type: value === null ? "null" : typeof value,
+    preview: typeof value === "string" ? value.slice(0, 80) : value,
+  });
+  return output;
+}
+
+function pathToExtractPath(path) {
+  return path
+    .replace(/^\$\./, "")
+    .replace(/^\$/, "")
+    .replaceAll("[]", "")
+    .split(".")
+    .filter(Boolean);
+}
+
+function candidateToRequest(candidate) {
+  return {
+    method: candidate.request.method,
+    url: candidate.request.url,
+    headers: candidate.request.headers,
+    body: candidate.request.body,
+  };
+}
+
+async function readProbeCandidate(sessionId, candidateId) {
+  const candidatePath = resolve(
+    RUNTIME_ROOT,
+    "probes",
+    sessionId,
+    "candidates",
+    `${candidateId}.json`,
+  );
+  const probeRoot = join(RUNTIME_ROOT, "probes");
+  if (!isInside(probeRoot, candidatePath)) {
+    throw Object.assign(new Error("Candidate path is outside runtime root."), {
+      statusCode: 400,
+    });
+  }
+  return JSON.parse(await readFile(candidatePath, "utf8"));
 }
 
 async function readRuntimeArtifact(kind, id, file) {
@@ -229,6 +311,130 @@ async function handleApi(request, response, url) {
       ok: true,
       sessionPath: result.sessionPath,
       summary: result.summary,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/probe/start") {
+    const body = await readJsonBody(request);
+    const probeConfig = body.config ?? {};
+    const sessionId = new Date().toISOString().replace(/[:.]/g, "-");
+    const stopController = createStopController();
+    const session = {
+      sessionId,
+      status: "starting",
+      startedAt: new Date().toISOString(),
+      stop: stopController.stop,
+    };
+    probeSessions.set(sessionId, session);
+    probePage({
+      ...probeConfig,
+      sessionId,
+      headless: probeConfig.headless === true,
+      durationSeconds: Number(probeConfig.durationSeconds ?? 3600),
+      stopSignal: stopController.signal,
+      onSessionStarted(event) {
+        session.status = "running";
+        session.sessionPath = event.sessionPath;
+        session.pageUrl = event.pageUrl;
+      },
+    })
+      .then((result) => {
+        session.status = "completed";
+        session.completedAt = new Date().toISOString();
+        session.sessionPath = result.sessionPath;
+        session.summary = result.summary;
+      })
+      .catch((error) => {
+        session.status = "failed";
+        session.completedAt = new Date().toISOString();
+        session.error = { name: error.name, message: error.message };
+      });
+    sendJson(response, 202, { ok: true, session: summarizeProbeSession(session) });
+    return;
+  }
+
+  const stopProbeMatch = url.pathname.match(/^\/api\/probe\/([^/]+)\/stop$/);
+  if (request.method === "POST" && stopProbeMatch) {
+    const session = probeSessions.get(decodeURIComponent(stopProbeMatch[1]));
+    if (!session) {
+      sendJson(response, 404, { ok: false, error: { message: "Probe session not found." } });
+      return;
+    }
+    if (["starting", "running"].includes(session.status)) {
+      session.status = "stopping";
+      session.stop();
+    }
+    sendJson(response, 200, { ok: true, session: summarizeProbeSession(session) });
+    return;
+  }
+
+  const getProbeMatch = url.pathname.match(/^\/api\/probe\/([^/]+)$/);
+  if (request.method === "GET" && getProbeMatch) {
+    const sessionId = decodeURIComponent(getProbeMatch[1]);
+    const session = probeSessions.get(sessionId);
+    if (session) {
+      sendJson(response, 200, { ok: true, session: summarizeProbeSession(session) });
+      return;
+    }
+    const summary = JSON.parse(
+      await readFile(join(RUNTIME_ROOT, "probes", sessionId, "summary.json"), "utf8"),
+    );
+    sendJson(response, 200, {
+      ok: true,
+      session: { sessionId, status: "completed", summary },
+    });
+    return;
+  }
+
+  const candidateMatch = url.pathname.match(/^\/api\/probe\/([^/]+)\/candidates\/([^/]+)$/);
+  if (request.method === "GET" && candidateMatch) {
+    const candidate = await readProbeCandidate(
+      decodeURIComponent(candidateMatch[1]),
+      decodeURIComponent(candidateMatch[2]),
+    );
+    sendJson(response, 200, {
+      ok: true,
+      candidate,
+      request: candidateToRequest(candidate),
+      responsePaths: describeJsonPaths(candidate.response.sample),
+      suggestedRecordPaths: describeJsonPaths(candidate.response.sample)
+        .filter((item) => item.type === "array")
+        .map((item) => ({
+          path: item.path,
+          recordPath: pathToExtractPath(item.path),
+          length: item.length,
+        })),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/replay-source") {
+    const body = await readJsonBody(request);
+    const config =
+      typeof body.content === "string"
+        ? JSON.parse(body.content)
+        : body.content;
+    const resolved = await resolveWorkflowConfig(config, {
+      baseDirectory: LOCAL_CONFIG_ROOT,
+    });
+    const sourceConfig = resolved.dataSource ?? resolved.dataSources?.[0];
+    const result = await runConfiguredDataSource({
+      config: {
+        ...sourceConfig,
+        headless: body.headless === true ? true : false,
+      },
+      runtimeRoot: RUNTIME_ROOT,
+      simulateFingerprint: body.simulateFingerprint === true,
+      retryConfig: resolved.reliability?.dataRequest,
+    });
+    sendJson(response, 200, {
+      ok: true,
+      sourceId: result.sourceId,
+      audit: result.audit,
+      quality: result.quality,
+      recordCount: result.records.length,
+      sampleRecords: result.records.slice(0, 5),
     });
     return;
   }

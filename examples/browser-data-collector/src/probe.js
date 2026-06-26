@@ -303,21 +303,43 @@ async function waitForOperator(durationSeconds) {
   readline.close();
 }
 
+async function waitForStop({ durationSeconds, stopSignal } = {}) {
+  const timers = [];
+  const waits = [];
+  if (durationSeconds > 0) {
+    waits.push(
+      new Promise((resolveWait) => {
+        const timer = setTimeout(resolveWait, durationSeconds * 1000);
+        timers.push(timer);
+      }),
+    );
+  }
+  if (stopSignal) waits.push(stopSignal);
+  if (waits.length === 0) {
+    await waitForOperator(0);
+    return;
+  }
+  await Promise.race(waits);
+  timers.forEach(clearTimeout);
+}
+
 export async function probePage({
   entryUrl,
   name = "data-source-probe",
   profileName = "probe",
+  sessionId = new Date().toISOString().replace(/[:.]/g, "-"),
   durationSeconds = 0,
   headless = false,
   edgePath = process.env.EDGE_PATH ?? DEFAULT_EDGE_PATH,
   capture = {},
   onPageReady,
+  onSessionStarted,
+  stopSignal,
 } = {}) {
   if (!entryUrl) throw new Error("entryUrl is required");
 
   const runtimeRoot = join(ROOT, "runtime");
   const profilePath = join(runtimeRoot, "profiles", profileName);
-  const sessionId = new Date().toISOString().replace(/[:.]/g, "-");
   const startedAt = new Date().toISOString();
   const sessionPath = join(runtimeRoot, "probes", sessionId);
   const candidatesPath = join(sessionPath, "candidates");
@@ -376,9 +398,10 @@ export async function probePage({
     await page.goto(entryUrl, { waitUntil: "domcontentloaded" });
     console.log(`Probe opened: ${page.url()}`);
     console.log(`Local output: ${sessionPath}`);
+    onSessionStarted?.({ sessionId, sessionPath, startedAt, pageUrl: page.url() });
 
     if (onPageReady) await onPageReady(page);
-    await waitForOperator(durationSeconds);
+    await waitForStop({ durationSeconds, stopSignal });
     await Promise.all([...pendingCaptures]);
 
     candidates.sort((left, right) => right.score - left.score);

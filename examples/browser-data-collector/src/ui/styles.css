@@ -169,6 +169,10 @@ nav {
   align-items: start;
 }
 
+.full-span {
+  grid-column: 1 / -1;
+}
+
 .panel,
 .console {
   border: 1px solid var(--line);
@@ -252,12 +256,82 @@ pre,
   font-size: 13px;
 }
 
+.result-box.compact {
+  min-height: 120px;
+  margin-top: 12px;
+}
+
 .badge {
   padding: 4px 8px;
   border-radius: 999px;
   color: var(--ok);
   background: #e9f7ef;
   font-size: 12px;
+}
+
+.badge.muted {
+  color: var(--muted);
+  background: #eef1f5;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.candidate-list {
+  display: grid;
+  gap: 8px;
+  max-height: 390px;
+  overflow: auto;
+}
+
+.candidate-item {
+  width: 100%;
+  min-height: 64px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+}
+
+.candidate-item:hover,
+.candidate-item.active {
+  border-color: var(--accent);
+  background: #f0f6ff;
+}
+
+.candidate-item strong {
+  display: block;
+  font-size: 13px;
+}
+
+.candidate-item span {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  gap: 16px;
+}
+
+#candidateDetail,
+#responsePaths {
+  max-height: 460px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfe;
 }
 
 .status-ok {
@@ -282,7 +356,8 @@ pre,
   }
 
   .grid,
-  .two-col {
+  .two-col,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 
